@@ -42,15 +42,16 @@
 
     const map = new mapboxgl.Map({
       container: 'map',
-      style: 'mapbox://styles/mapbox/outdoors-v12',
+      style: 'mapbox://styles/mapbox/light-v11',
       center: [-75.6972, 45.4215],
-      zoom: 8,
-      pitch: 60,
-      bearing: 0,
+      zoom: 7,
+      pitch: 55,
+      bearing: -20,
       antialias: true
     });
 
     map.on('load', () => {
+      // DEM source for terrain and hillshade
       map.addSource('mapbox-dem', {
         type: 'raster-dem',
         url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
@@ -58,15 +59,64 @@
         maxzoom: 14
       });
 
-      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 4.0 });
 
+      // Sculpted hillshade
+      map.addLayer({
+        id: 'terrain-hillshade',
+        type: 'hillshade',
+        source: 'mapbox-dem',
+        paint: {
+          'hillshade-highlight-color': '#ffffff',
+          'hillshade-shadow-color': '#283d6a',
+          'hillshade-accent-color': '#4a7ab5',
+          'hillshade-illumination-direction': 335,
+          'hillshade-exaggeration': 0.75
+        }
+      }, 'waterway-label');
+
+      // Sky layer
       map.addLayer({
         id: 'sky',
         type: 'sky',
         paint: {
           'sky-type': 'atmosphere',
           'sky-atmosphere-sun': [0.0, 0.0],
-          'sky-atmosphere-sun-intensity': 15
+          'sky-atmosphere-sun-intensity': 10
+        }
+      });
+
+      // Atmospheric fog — fades distant terrain into haze
+      map.setFog({
+        color: '#1a2a3a',
+        'high-color': '#2c4a6e',
+        'horizon-blend': 0.08,
+        'space-color': '#0d1b2a',
+        'star-intensity': 0.0
+      });
+
+      // Muted blue-grey land background
+      map.setPaintProperty('land', 'background-color', '#b8c9d9');
+
+      // Strip labels — keep only major settlement names
+      const labelLayersToHide = [
+        'road-label',
+        'road-number-shield',
+        'road-exit-shield',
+        'waterway-label',
+        'natural-line-label',
+        'natural-point-label',
+        'water-line-label',
+        'water-point-label',
+        'poi-label',
+        'airport-label',
+        'settlement-subdivision-label',
+        'state-label',
+      ];
+
+      labelLayersToHide.forEach(id => {
+        if (map.getLayer(id)) {
+          map.setLayoutProperty(id, 'visibility', 'none');
         }
       });
     });
