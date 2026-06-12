@@ -12,12 +12,10 @@
     #map { width: 100%; height: 100%; }
     #topbar {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 0; left: 0; right: 0;
       z-index: 10;
       height: 48px;
-      background: rgba(10, 10, 10, 0.6);
+      background: rgba(10, 10, 10, 0.65);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       display: flex;
@@ -51,101 +49,41 @@
     });
 
     map.on('load', () => {
-      // DEM source for terrain and hillshade
-      map.addSource('mapbox-dem', {
+      map.addSource('dem', {
         type: 'raster-dem',
         url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        tileSize: 512,
-        maxzoom: 14
+        tileSize: 512
       });
 
-      // Terrain-RGB source for elevation color ramp
-      map.addSource('terrain-rgb', {
-        type: 'raster',
-        url: 'mapbox://mapbox.terrain-rgb',
-        tileSize: 256,
-        maxzoom: 14
-      });
+      map.setTerrain({ source: 'dem', exaggeration: 6.0 });
 
-      map.setTerrain({ source: 'mapbox-dem', exaggeration: 6.0 });
-
-      // Elevation color ramp — decoded from terrain-RGB pixel values
       map.addLayer({
         id: 'elevation-color',
-        type: 'raster',
-        source: 'terrain-rgb',
-        paint: {
-          'raster-color-mix': [6553.6, 25.6, 0.1, -10000],
-          'raster-color-range': [0, 4000],
-          'raster-color': [
-            'interpolate', ['linear'], ['raster-value'],
-            0,    '#2a4858',
-            200,  '#4a7c59',
-            800,  '#a8c96b',
-            1500, '#d47c3a',
-            3000, '#f0ede8'
-          ],
-          'raster-opacity': 1.0
-        }
-      }, 'waterway-label');
-
-      // Sculpted hillshade on top — exaggeration at 0.6 lets colors show through
-      map.addLayer({
-        id: 'terrain-hillshade',
         type: 'hillshade',
-        source: 'mapbox-dem',
+        source: 'dem',
         paint: {
-          'hillshade-highlight-color': '#ffffff',
-          'hillshade-shadow-color': '#1a2744',
-          'hillshade-accent-color': '#4a7ab5',
-          'hillshade-illumination-direction': 335,
-          'hillshade-exaggeration': 0.6
+          'hillshade-shadow-color': '#2a6049',
+          'hillshade-highlight-color': '#d4a843',
+          'hillshade-accent-color': '#8b4513',
+          'hillshade-exaggeration': 0.8
         }
-      }, 'waterway-label');
+      });
 
-      // Sky layer
       map.addLayer({
-        id: 'sky',
-        type: 'sky',
+        id: 'hillshade',
+        type: 'hillshade',
+        source: 'dem',
         paint: {
-          'sky-type': 'atmosphere',
-          'sky-atmosphere-sun': [0.0, 0.0],
-          'sky-atmosphere-sun-intensity': 10
+          'hillshade-exaggeration': 1.0,
+          'hillshade-shadow-color': '#1a2744',
+          'hillshade-highlight-color': '#ffffff',
+          'hillshade-illumination-direction': 335
         }
       });
 
-      // Atmospheric fog — fades distant terrain into haze
       map.setFog({
-        color: '#1a2a3a',
-        'high-color': '#2c4a6e',
-        'horizon-blend': 0.08,
-        'space-color': '#0d1b2a',
-        'star-intensity': 0.0
-      });
-
-      // Muted blue-grey land background
-      map.setPaintProperty('land', 'background-color', '#b8c9d9');
-
-      // Strip labels — keep only major settlement names
-      const labelLayersToHide = [
-        'road-label',
-        'road-number-shield',
-        'road-exit-shield',
-        'waterway-label',
-        'natural-line-label',
-        'natural-point-label',
-        'water-line-label',
-        'water-point-label',
-        'poi-label',
-        'airport-label',
-        'settlement-subdivision-label',
-        'state-label',
-      ];
-
-      labelLayersToHide.forEach(id => {
-        if (map.getLayer(id)) {
-          map.setLayoutProperty(id, 'visibility', 'none');
-        }
+        color: '#d0dde8',
+        'horizon-blend': 0.1
       });
     });
   </script>
