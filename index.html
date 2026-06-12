@@ -43,9 +43,9 @@
     const map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/light-v11',
-      center: [-75.6972, 45.4215],
-      zoom: 7,
-      pitch: 55,
+      center: [-115.5708, 51.1784],
+      zoom: 9,
+      pitch: 60,
       bearing: -20,
       antialias: true
     });
@@ -59,7 +59,7 @@
         maxzoom: 14
       });
 
-      map.setTerrain({ source: 'mapbox-dem', exaggeration: 4.0 });
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 6.0 });
 
       // Sculpted hillshade
       map.addLayer({
@@ -68,10 +68,10 @@
         source: 'mapbox-dem',
         paint: {
           'hillshade-highlight-color': '#ffffff',
-          'hillshade-shadow-color': '#283d6a',
+          'hillshade-shadow-color': '#1a2744',
           'hillshade-accent-color': '#4a7ab5',
           'hillshade-illumination-direction': 335,
-          'hillshade-exaggeration': 0.75
+          'hillshade-exaggeration': 1.0
         }
       }, 'waterway-label');
 
