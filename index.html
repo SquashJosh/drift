@@ -59,9 +59,37 @@
         maxzoom: 14
       });
 
+      // Terrain-RGB source for elevation color ramp
+      map.addSource('terrain-rgb', {
+        type: 'raster',
+        url: 'mapbox://mapbox.terrain-rgb',
+        tileSize: 256,
+        maxzoom: 14
+      });
+
       map.setTerrain({ source: 'mapbox-dem', exaggeration: 6.0 });
 
-      // Sculpted hillshade
+      // Elevation color ramp — decoded from terrain-RGB pixel values
+      map.addLayer({
+        id: 'elevation-color',
+        type: 'raster',
+        source: 'terrain-rgb',
+        paint: {
+          'raster-color-mix': [6553.6, 25.6, 0.1, -10000],
+          'raster-color-range': [0, 4000],
+          'raster-color': [
+            'interpolate', ['linear'], ['raster-value'],
+            0,    '#2a4858',
+            200,  '#4a7c59',
+            800,  '#a8c96b',
+            1500, '#d47c3a',
+            3000, '#f0ede8'
+          ],
+          'raster-opacity': 1.0
+        }
+      }, 'waterway-label');
+
+      // Sculpted hillshade on top — exaggeration at 0.6 lets colors show through
       map.addLayer({
         id: 'terrain-hillshade',
         type: 'hillshade',
@@ -71,7 +99,7 @@
           'hillshade-shadow-color': '#1a2744',
           'hillshade-accent-color': '#4a7ab5',
           'hillshade-illumination-direction': 335,
-          'hillshade-exaggeration': 1.0
+          'hillshade-exaggeration': 0.6
         }
       }, 'waterway-label');
 
