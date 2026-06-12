@@ -4,8 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drift</title>
-  <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { width: 100vw; height: 100vh; overflow: hidden; }
@@ -36,11 +37,12 @@
   <div id="topbar"><h1>Drift</h1></div>
   <div id="map"></div>
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1Ijoiam9zaHJlbmF1ZCIsImEiOiJjbXBvdDF3NDQwNDN6MnJwcXkwZnp4MnlmIn0.hD5_oumK4BA1yGEN1Wzusw';
+    const TOKEN = 'pk.eyJ1Ijoiam9zaHJlbmF1ZCIsImEiOiJjbXBvdDF3NDQwNDN6MnJwcXkwZnp4MnlmIn0.hD5_oumK4BA1yGEN1Wzusw';
+    mapboxgl.accessToken = TOKEN;
 
     const map = new mapboxgl.Map({
       container: 'map',
-      style: 'mapbox://styles/mapbox/light-v11',
+      style: 'mapbox://styles/mapbox/dark-v11',
       center: [-115.5708, 51.1784],
       zoom: 9,
       pitch: 60,
@@ -49,42 +51,25 @@
     });
 
     map.on('load', () => {
-      map.addSource('dem', {
-        type: 'raster-dem',
-        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        tileSize: 512
-      });
-
-      map.setTerrain({ source: 'dem', exaggeration: 6.0 });
-
-      map.addLayer({
-        id: 'elevation-color',
-        type: 'hillshade',
-        source: 'dem',
-        paint: {
-          'hillshade-shadow-color': '#2a6049',
-          'hillshade-highlight-color': '#d4a843',
-          'hillshade-accent-color': '#8b4513',
-          'hillshade-exaggeration': 0.8
-        }
-      });
-
-      map.addLayer({
-        id: 'hillshade',
-        type: 'hillshade',
-        source: 'dem',
-        paint: {
-          'hillshade-exaggeration': 1.0,
-          'hillshade-shadow-color': '#1a2744',
-          'hillshade-highlight-color': '#ffffff',
-          'hillshade-illumination-direction': 335
-        }
-      });
-
-      map.setFog({
-        color: '#d0dde8',
-        'horizon-blend': 0.1
-      });
+      // TerrainLayer: elevationData drives the 3D mesh shape; texture drapes the color.
+      // deck.gl's TerrainLayer getColor/colorRange are per-tile, not per-vertex elevation,
+      // so a pre-colored texture is the correct way to achieve an elevation color ramp.
+      // outdoors-v12 naturally maps green→brown→white across the elevation range.
+      // 2x exaggeration is applied by doubling the elevation decoder scalers and offset.
+      map.addLayer(new deck.MapboxLayer({
+        id: 'drift-terrain',
+        type: deck.TerrainLayer,
+        elevationData: `https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=${TOKEN}`,
+        texture: `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}?access_token=${TOKEN}`,
+        elevationDecoder: {
+          rScaler: 13107.2,
+          gScaler: 51.2,
+          bScaler: 0.2,
+          offset: -20000
+        },
+        meshMaxError: 4,
+        pickable: false
+      }));
     });
   </script>
 </body>
