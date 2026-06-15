@@ -4,73 +4,192 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drift</title>
-  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-  <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { width: 100vw; height: 100vh; overflow: hidden; }
-    #map { width: 100%; height: 100%; }
+    html, body { width: 100vw; height: 100vh; overflow: hidden; }
+    #map { width: 100%; height: 100%; background: #0a0d0c; }
+
+    :root {
+      --panel: rgba(10, 12, 11, 0.62);
+      --hair: rgba(255, 255, 255, 0.10);
+      --ink: #f3f1ea;
+      --ink-dim: rgba(243, 241, 234, 0.55);
+      --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+
     #topbar {
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      z-index: 10;
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
       height: 48px;
-      background: rgba(10, 10, 10, 0.65);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      display: flex;
-      align-items: center;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--hair);
+      display: flex; align-items: center; justify-content: space-between;
       padding: 0 20px;
     }
     #topbar h1 {
-      color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      font-size: 18px;
-      font-weight: 500;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
+      color: var(--ink); font-family: var(--ui);
+      font-size: 18px; font-weight: 500;
+      letter-spacing: 0.30em; text-transform: uppercase;
     }
+    #readout {
+      font-family: var(--ui); font-variant-numeric: tabular-nums;
+      font-size: 13px; letter-spacing: 0.04em;
+      color: var(--ink-dim);
+    }
+    #readout b { color: var(--ink); font-weight: 600; }
+
+    #legend {
+      position: absolute; left: 20px; bottom: 24px; z-index: 10;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 4px;
+      padding: 12px 14px;
+      font-family: var(--ui); color: var(--ink);
+      display: flex; gap: 12px; align-items: stretch;
+    }
+    #legend .title {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--ink-dim); align-self: center;
+    }
+    #legend .bar {
+      width: 12px; border-radius: 2px;
+      box-shadow: inset 0 0 0 1px var(--hair);
+    }
+    #legend .ticks {
+      display: flex; flex-direction: column; justify-content: space-between;
+      font-size: 11px; font-variant-numeric: tabular-nums;
+      color: var(--ink-dim);
+    }
+    #legend .ticks b { color: var(--ink); font-weight: 500; }
+
+    .maplibregl-ctrl-top-right { margin-top: 56px; }
+    .maplibregl-ctrl-attrib {
+      background: var(--panel) !important;
+      backdrop-filter: blur(8px);
+    }
+    .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
   </style>
 </head>
 <body>
-  <div id="topbar"><h1>Drift</h1></div>
+  <div id="topbar">
+    <h1>Drift</h1>
+    <div id="readout">Canadian Rockies &nbsp;·&nbsp; <b id="elev">—</b></div>
+  </div>
   <div id="map"></div>
+
+  <div id="legend">
+    <div class="title">Elevation</div>
+    <div class="bar" id="legendBar"></div>
+    <div class="ticks" id="legendTicks"></div>
+  </div>
+
   <script>
-    const TOKEN = 'pk.eyJ1Ijoiam9zaHJlbmF1ZCIsImEiOiJjbXBvdDF3NDQwNDN6MnJwcXkwZnp4MnlmIn0.hD5_oumK4BA1yGEN1Wzusw';
-    mapboxgl.accessToken = TOKEN;
+    // Elevation colour ramp (metres -> colour). Single source of truth for
+    // both the map's color-relief layer and the on-screen legend. Tuned to
+    // the Bow Valley / Kananaskis band: ~1,300 m floors to ~3,400 m peaks.
+    const ELEV_STOPS = [
+      [1200, '#16302a'],  // deep valley evergreen
+      [1500, '#244d3d'],  // forest
+      [1800, '#3d6b4a'],  // upper forest
+      [2100, '#6e8757'],  // subalpine sage
+      [2300, '#a89968'],  // treeline gold
+      [2600, '#b39173'],  // warm rock
+      [2900, '#9c958c'],  // cold stone
+      [3200, '#d2cec5'],  // bare scree
+      [3500, '#ffffff'],  // snow
+    ];
 
-    const map = new mapboxgl.Map({
+    const TERRAIN_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+
+    const colorReliefExpr = ['interpolate', ['linear'], ['elevation']];
+    ELEV_STOPS.forEach(([m, c]) => { colorReliefExpr.push(m, c); });
+
+    const map = new maplibregl.Map({
       container: 'map',
-      style: 'mapbox://styles/mapbox/dark-v11',
       center: [-115.5708, 51.1784],
-      zoom: 9,
-      pitch: 60,
+      zoom: 10,
+      pitch: 65,
       bearing: -20,
-      antialias: true
+      maxPitch: 80,
+      antialias: true,
+      style: {
+        version: 8,
+        sources: {
+          terrain: {
+            type: 'raster-dem',
+            tiles: [TERRAIN_TILES],
+            encoding: 'terrarium',
+            tileSize: 256,
+            maxzoom: 13,
+            attribution: "Elevation: <a href='https://registry.opendata.aws/terrain-tiles/'>AWS Terrain Tiles</a> (Mapzen / 3DEP / others)"
+          }
+        },
+        layers: [
+          { id: 'bg', type: 'background', paint: { 'background-color': '#0a0d0c' } },
+          {
+            id: 'elevation',
+            type: 'color-relief',
+            source: 'terrain',
+            paint: { 'color-relief-color': colorReliefExpr }
+          },
+          {
+            id: 'shade',
+            type: 'hillshade',
+            source: 'terrain',
+            paint: {
+              'hillshade-exaggeration': 0.55,
+              'hillshade-shadow-color': 'rgba(8, 12, 14, 0.85)',
+              'hillshade-highlight-color': 'rgba(255, 250, 240, 0.55)',
+              'hillshade-accent-color': 'rgba(20, 26, 28, 0.4)',
+              'hillshade-illumination-direction': 315
+            }
+          }
+        ],
+        terrain: { source: 'terrain', exaggeration: 1.5 },
+        sky: {
+          'sky-color': '#8fb2d1',
+          'sky-horizon-blend': 0.6,
+          'horizon-color': '#cddde8',
+          'horizon-fog-blend': 0.6,
+          'fog-color': '#e3ebef',
+          'fog-ground-blend': 0.05,
+          'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 10, 0]
+        }
+      }
     });
 
-    map.on('load', () => {
-      // TerrainLayer: elevationData drives the 3D mesh shape; texture drapes the color.
-      // deck.gl's TerrainLayer getColor/colorRange are per-tile, not per-vertex elevation,
-      // so a pre-colored texture is the correct way to achieve an elevation color ramp.
-      // outdoors-v12 naturally maps green→brown→white across the elevation range.
-      // 2x exaggeration is applied by doubling the elevation decoder scalers and offset.
-      map.addLayer(new deck.MapboxLayer({
-        id: 'drift-terrain',
-        type: deck.TerrainLayer,
-        elevationData: `https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=${TOKEN}`,
-        texture: `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}?access_token=${TOKEN}`,
-        elevationDecoder: {
-          rScaler: 13107.2,
-          gScaler: 51.2,
-          bScaler: 0.2,
-          offset: -20000
-        },
-        meshMaxError: 4,
-        pickable: false
-      }));
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+    (function buildLegend() {
+      const min = ELEV_STOPS[0][0];
+      const max = ELEV_STOPS[ELEV_STOPS.length - 1][0];
+      const span = max - min;
+      const stops = ELEV_STOPS.map(([m, c]) => `${c} ${((m - min) / span * 100).toFixed(1)}%`);
+      document.getElementById('legendBar').style.background =
+        `linear-gradient(to top, ${stops.join(', ')})`;
+
+      const ticksAt = [3500, 2900, 2300, 1800, 1200];
+      document.getElementById('legendTicks').innerHTML = ticksAt
+        .map(m => `<span>${m === 2300 ? '<b>2,300</b> treeline' : m.toLocaleString() + ' m'}</span>`)
+        .join('');
+    })();
+
+    let raf = null;
+    map.on('mousemove', (e) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        const el = map.queryTerrainElevation(e.lngLat);
+        document.getElementById('elev').textContent =
+          (el == null) ? '—' : Math.round(el).toLocaleString() + ' m';
+      });
     });
+    map.on('mouseout', () => { document.getElementById('elev').textContent = '—'; });
+
+    map.on('error', (e) => console.error('MapLibre:', e && e.error ? e.error : e));
   </script>
 </body>
 </html>
