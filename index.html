@@ -35,8 +35,7 @@
     }
     #readout {
       font-family: var(--ui); font-variant-numeric: tabular-nums;
-      font-size: 13px; letter-spacing: 0.04em;
-      color: var(--ink-dim);
+      font-size: 13px; letter-spacing: 0.04em; color: var(--ink-dim);
     }
     #readout b { color: var(--ink); font-weight: 600; }
 
@@ -45,8 +44,7 @@
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--hair); border-radius: 4px;
-      padding: 12px 14px;
-      font-family: var(--ui); color: var(--ink);
+      padding: 12px 14px; font-family: var(--ui); color: var(--ink);
       display: flex; gap: 12px; align-items: stretch;
     }
     #legend .title {
@@ -54,29 +52,22 @@
       font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
       color: var(--ink-dim); align-self: center;
     }
-    #legend .bar {
-      width: 12px; border-radius: 2px;
-      box-shadow: inset 0 0 0 1px var(--hair);
-    }
+    #legend .bar { width: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--hair); }
     #legend .ticks {
       display: flex; flex-direction: column; justify-content: space-between;
-      font-size: 11px; font-variant-numeric: tabular-nums;
-      color: var(--ink-dim);
+      font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-dim);
     }
     #legend .ticks b { color: var(--ink); font-weight: 500; }
 
     .maplibregl-ctrl-top-right { margin-top: 56px; }
-    .maplibregl-ctrl-attrib {
-      background: var(--panel) !important;
-      backdrop-filter: blur(8px);
-    }
+    .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
     .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
   </style>
 </head>
 <body>
   <div id="topbar">
     <h1>Drift</h1>
-    <div id="readout">Canadian Rockies &nbsp;·&nbsp; <b id="elev">—</b></div>
+    <div id="readout">Canadian Rockies &nbsp;·&nbsp; <b id="elev">&mdash;</b></div>
   </div>
   <div id="map"></div>
 
@@ -87,90 +78,71 @@
   </div>
 
   <script>
-    // Elevation colour ramp (metres -> colour). Single source of truth for
-    // both the map's color-relief layer and the on-screen legend. Tuned to
-    // the Bow Valley / Kananaskis band: ~1,300 m floors to ~3,400 m peaks.
+    const MAPBOX_TOKEN = 'pk.eyJ1Ijoiam9zaHJlbmF1ZCIsImEiOiJjbXBvdDF3NDQwNDN6MnJwcXkwZnp4MnlmIn0.hD5_oumK4BA1yGEN1Wzusw';
+
     const ELEV_STOPS = [
-      [1200, '#16302a'],  // deep valley evergreen
-      [1500, '#244d3d'],  // forest
-      [1800, '#3d6b4a'],  // upper forest
-      [2100, '#6e8757'],  // subalpine sage
-      [2300, '#a89968'],  // treeline gold
-      [2600, '#b39173'],  // warm rock
-      [2900, '#9c958c'],  // cold stone
-      [3200, '#d2cec5'],  // bare scree
-      [3500, '#ffffff'],  // snow
+      [1200, '#16302a'], [1500, '#244d3d'], [1800, '#3d6b4a'],
+      [2100, '#6e8757'], [2300, '#a89968'], [2600, '#b39173'],
+      [2900, '#9c958c'], [3200, '#d2cec5'], [3500, '#ffffff'],
     ];
-
-    const TERRAIN_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
-
     const colorReliefExpr = ['interpolate', ['linear'], ['elevation']];
     ELEV_STOPS.forEach(([m, c]) => { colorReliefExpr.push(m, c); });
 
+    const DEM_SOURCE = {
+      type: 'raster-dem',
+      tiles: ['https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=' + MAPBOX_TOKEN],
+      encoding: 'mapbox',
+      tileSize: 256,
+      maxzoom: 14,
+      attribution: "DEM &copy; <a href='https://www.mapbox.com/about/maps/'>Mapbox</a>"
+    };
+
+    const HILLSHADE_PAINT = {
+      'hillshade-exaggeration': 0.5,
+      'hillshade-shadow-color': 'rgba(8, 12, 14, 0.8)',
+      'hillshade-highlight-color': 'rgba(255, 250, 240, 0.45)',
+      'hillshade-accent-color': 'rgba(20, 26, 28, 0.35)',
+      'hillshade-illumination-direction': 315
+    };
+
+    const SKY = {
+      'sky-color': '#8fb2d1', 'sky-horizon-blend': 0.6,
+      'horizon-color': '#cddde8', 'horizon-fog-blend': 0.6,
+      'fog-color': '#e3ebef', 'fog-ground-blend': 0.05,
+      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 10, 0]
+    };
+
     const map = new maplibregl.Map({
       container: 'map',
+      style: { version: 8, sources: {}, layers: [] },
       center: [-115.5708, 51.1784],
-      zoom: 10,
-      pitch: 65,
-      bearing: -20,
-      maxPitch: 80,
-      antialias: true,
-      style: {
-        version: 8,
-        sources: {
-          terrain: {
-            type: 'raster-dem',
-            tiles: [TERRAIN_TILES],
-            encoding: 'terrarium',
-            tileSize: 256,
-            maxzoom: 13,
-            attribution: "Elevation: <a href='https://registry.opendata.aws/terrain-tiles/'>AWS Terrain Tiles</a> (Mapzen / 3DEP / others)"
-          }
-        },
-        layers: [
-          { id: 'bg', type: 'background', paint: { 'background-color': '#0a0d0c' } },
-          {
-            id: 'elevation',
-            type: 'color-relief',
-            source: 'terrain',
-            paint: { 'color-relief-color': colorReliefExpr }
-          },
-          {
-            id: 'shade',
-            type: 'hillshade',
-            source: 'terrain',
-            paint: {
-              'hillshade-exaggeration': 0.55,
-              'hillshade-shadow-color': 'rgba(8, 12, 14, 0.85)',
-              'hillshade-highlight-color': 'rgba(255, 250, 240, 0.55)',
-              'hillshade-accent-color': 'rgba(20, 26, 28, 0.4)',
-              'hillshade-illumination-direction': 315
-            }
-          }
-        ],
-        terrain: { source: 'terrain', exaggeration: 1.5 },
-        sky: {
-          'sky-color': '#8fb2d1',
-          'sky-horizon-blend': 0.6,
-          'horizon-color': '#cddde8',
-          'horizon-fog-blend': 0.6,
-          'fog-color': '#e3ebef',
-          'fog-ground-blend': 0.05,
-          'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 10, 0]
-        }
-      }
+      zoom: 10, pitch: 65, bearing: -20, maxPitch: 80, antialias: true
     });
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    (function buildLegend() {
-      const min = ELEV_STOPS[0][0];
-      const max = ELEV_STOPS[ELEV_STOPS.length - 1][0];
-      const span = max - min;
-      const stops = ELEV_STOPS.map(([m, c]) => `${c} ${((m - min) / span * 100).toFixed(1)}%`);
-      document.getElementById('legendBar').style.background =
-        `linear-gradient(to top, ${stops.join(', ')})`;
+    map.setStyle('https://tiles.openfreemap.org/styles/liberty', {
+      transformStyle: (previous, next) => {
+        next.sources = { ...next.sources, dem: DEM_SOURCE };
+        const layers = next.layers.slice();
+        let at = layers.findIndex(l => l['source-layer'] === 'transportation');
+        if (at < 0) at = layers.length;
+        layers.splice(at, 0,
+          { id: 'elevation', type: 'color-relief', source: 'dem',
+            paint: { 'color-relief-color': colorReliefExpr } },
+          { id: 'shade', type: 'hillshade', source: 'dem', paint: HILLSHADE_PAINT }
+        );
+        next.layers = layers;
+        next.terrain = { source: 'dem', exaggeration: 1.4 };
+        next.sky = SKY;
+        return next;
+      }
+    });
 
+    (function buildLegend() {
+      const min = ELEV_STOPS[0][0], max = ELEV_STOPS[ELEV_STOPS.length - 1][0], span = max - min;
+      const stops = ELEV_STOPS.map(([m, c]) => `${c} ${((m - min) / span * 100).toFixed(1)}%`);
+      document.getElementById('legendBar').style.background = `linear-gradient(to top, ${stops.join(', ')})`;
       const ticksAt = [3500, 2900, 2300, 1800, 1200];
       document.getElementById('legendTicks').innerHTML = ticksAt
         .map(m => `<span>${m === 2300 ? '<b>2,300</b> treeline' : m.toLocaleString() + ' m'}</span>`)
@@ -183,12 +155,10 @@
       raf = requestAnimationFrame(() => {
         raf = null;
         const el = map.queryTerrainElevation(e.lngLat);
-        document.getElementById('elev').textContent =
-          (el == null) ? '—' : Math.round(el).toLocaleString() + ' m';
+        document.getElementById('elev').textContent = (el == null) ? '—' : Math.round(el).toLocaleString() + ' m';
       });
     });
     map.on('mouseout', () => { document.getElementById('elev').textContent = '—'; });
-
     map.on('error', (e) => console.error('MapLibre:', e && e.error ? e.error : e));
   </script>
 </body>
