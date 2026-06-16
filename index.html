@@ -414,8 +414,7 @@
     }
 
     function arrowLen(speed) {
-      // 14px at 5 km/h → 36px at 50+ km/h
-      return 14 + Math.min(1, Math.max(0, (speed - 5) / 45)) * 22;
+      return 18 + Math.min(1, Math.max(0, (speed - 5) / 45)) * 24;
     }
 
     function buildArrowGrid() {
@@ -455,10 +454,11 @@
         windCtx.save();
         windCtx.translate(a.x, a.y);
         windCtx.rotate(a.angle);
+        windCtx.globalAlpha = 0.90;
 
-        windCtx.strokeStyle = 'rgba(255,255,255,0.80)';
-        windCtx.fillStyle = 'rgba(255,255,255,0.80)';
-        windCtx.lineWidth = 1.2;
+        windCtx.strokeStyle = '#ddeeff';
+        windCtx.fillStyle = '#ddeeff';
+        windCtx.lineWidth = 1.8;
         windCtx.setLineDash([dashLen, gapLen]);
         windCtx.lineDashOffset = -(phase * a.speed * 0.08);
         windCtx.beginPath();
@@ -469,8 +469,8 @@
         windCtx.setLineDash([]);
         windCtx.beginPath();
         windCtx.moveTo(half, 0);
-        windCtx.lineTo(half - 5, -1.5);
-        windCtx.lineTo(half - 5, 1.5);
+        windCtx.lineTo(half - 6, -2);
+        windCtx.lineTo(half - 6, 2);
         windCtx.closePath();
         windCtx.fill();
 
