@@ -489,13 +489,13 @@
         const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
 
         if (wind) {
-          const speed = Math.hypot(wind.U, wind.V);
-          if (speed > 0) {
-            const speedPx = speed * 0.06;
-            p.x += (wind.U / speed) * speedPx;
-            p.y -= (wind.V / speed) * speedPx;
+          const spd = Math.sqrt(wind.U * wind.U + wind.V * wind.V);
+          if (spd >= 0.001) {
+            const speedPx = spd * 0.06;
+            p.x += (wind.U / spd) * speedPx;
+            p.y += (wind.V / spd) * speedPx;
           }
-          p.speed = speed;
+          p.speed = spd;
         }
 
         const opacity = particleOpacity(p.age, p.maxAge);
