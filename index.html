@@ -113,11 +113,11 @@
     }
 
     let elevationLayerId = 'elevation-tint';
-    let beforeLayerId; // first symbol layer in the liberty style, captured at style-load time
+    let beforeLayerId; // first symbol layer in the liberty style
 
     const map = new maplibregl.Map({
       container: 'map',
-      style: { version: 8, sources: {}, layers: [] },
+      style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [-75.81974, 45.27836],
       zoom: 11,
       pitch: 0,
@@ -126,28 +126,6 @@
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
-
-    map.setStyle('https://tiles.openfreemap.org/styles/liberty', {
-      transformStyle: (previous, next) => {
-        next.sources = { ...next.sources, 'terrain-dem': DEM_SOURCE };
-
-        const layers = next.layers.slice();
-        let symbolIndex = layers.findIndex(l => l.type === 'symbol');
-        if (symbolIndex < 0) symbolIndex = layers.length;
-        beforeLayerId = layers[symbolIndex] ? layers[symbolIndex].id : undefined;
-
-        layers.splice(symbolIndex, 0, {
-          id: elevationLayerId,
-          type: 'color-relief',
-          source: 'terrain-dem',
-          paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
-        });
-        next.layers = layers;
-
-        next.terrain = { source: 'terrain-dem', exaggeration: 1 };
-        return next;
-      }
-    });
 
     function updateColorRelief(min, max) {
       const expr = buildColorReliefExpr(min, max);
@@ -199,26 +177,44 @@
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(sampleAndRecolor, 150);
     }
-    map.on('moveend', scheduleRecolor);
-    map.on('idle', scheduleRecolor);
 
     (function buildLegendBar() {
       const stops = RAMP_RGB.map((rgb, i) => `rgb(${rgb}) ${(i / (RAMP_RGB.length - 1) * 100).toFixed(1)}%`);
       document.getElementById('legendBar').style.background = `linear-gradient(to top, ${stops.join(', ')})`;
     })();
 
-    let raf = null;
-    map.on('mousemove', (e) => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = null;
-        const el = map.queryTerrainElevation(e.lngLat, { exaggerated: false });
-        document.getElementById('elev').textContent = (el == null) ? '—' : Math.round(el).toLocaleString() + ' m';
-      });
-    });
-    map.on('mouseout', () => { document.getElementById('elev').textContent = '—'; });
-
     map.on('error', (e) => console.error('MapLibre:', e && e.error ? e.error : e));
+
+    map.on('style.load', () => {
+      map.addSource('terrain-dem', DEM_SOURCE);
+      map.setTerrain({ source: 'terrain-dem', exaggeration: 1 });
+
+      const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
+      beforeLayerId = firstSymbol;
+
+      map.addLayer({
+        id: elevationLayerId,
+        type: 'color-relief',
+        source: 'terrain-dem',
+        paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
+      }, beforeLayerId);
+
+      sampleAndRecolor();
+
+      map.on('moveend', scheduleRecolor);
+      map.on('idle', scheduleRecolor);
+
+      let raf = null;
+      map.on('mousemove', (e) => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = null;
+          const el = map.queryTerrainElevation(e.lngLat, { exaggerated: false });
+          document.getElementById('elev').textContent = (el == null) ? '—' : Math.round(el).toLocaleString() + ' m';
+        });
+      });
+      map.on('mouseout', () => { document.getElementById('elev').textContent = '—'; });
+    });
   </script>
 </body>
 </html>
