@@ -335,8 +335,11 @@
         paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
       }, beforeLayerId);
 
-      sampleAndRecolor();
-      fetchWindData();
+      map.once('idle', () => {
+        lastSampledBounds = null;
+        sampleAndRecolor();
+        fetchWindData();
+      });
 
       map.on('moveend', scheduleRecolor);
       map.on('idle', scheduleRecolor);
