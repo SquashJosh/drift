@@ -9,7 +9,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100vw; height: 100vh; overflow: hidden; }
-    #map { width: 100%; height: 100%; background: #0a0d0c; }
+    #map { width: 100%; height: 100%; background: #0a0d0c; position: relative; }
 
     :root {
       --panel: rgba(10, 12, 11, 0.62);
@@ -64,12 +64,57 @@
     .maplibregl-ctrl-top-right { margin-top: 56px; }
     .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
     .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
+
+    #wind-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 5;
+    }
+
+    #scrubber {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 20;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 12px 20px; min-width: 480px;
+      font-family: var(--ui); color: var(--ink);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #scrubber .row { display: flex; align-items: center; gap: 12px; }
+    #scrubber .row.top { justify-content: space-between; }
+    #scrubber .time { font-size: 14px; font-weight: 500; letter-spacing: 0.02em; }
+    #scrubber .wind { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    #scrubber .wind b { color: var(--ink); font-weight: 600; }
+    #scrubber .edge {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--ink-dim); white-space: nowrap;
+    }
+
+    #hourSlider {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 3px; background: var(--hair); border-radius: 2px; outline: none;
+    }
+    #hourSlider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--ink); cursor: pointer; box-shadow: 0 0 0 3px var(--hair);
+    }
+    #hourSlider::-moz-range-thumb {
+      width: 12px; height: 12px; border-radius: 50%; background: var(--ink);
+      border: none; cursor: pointer; box-shadow: 0 0 0 3px var(--hair);
+    }
+    #hourSlider::-moz-range-track { height: 3px; background: var(--hair); border-radius: 2px; }
+
+    #nowBtn {
+      font-family: var(--ui); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--ink-dim); background: transparent; border: 1px solid var(--hair); border-radius: 4px;
+      padding: 4px 8px; cursor: pointer;
+    }
+    #nowBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
   </style>
 </head>
 <body>
   <div id="topbar">
     <h1>Drift</h1>
-    <div id="readout">Ottawa &nbsp;·&nbsp; <b id="elev">&mdash;</b></div>
+    <div id="readout"><b id="elev">&mdash;</b></div>
   </div>
   <div id="map"></div>
 
@@ -77,6 +122,19 @@
     <div class="title">Elevation</div>
     <div class="bar" id="legendBar"></div>
     <div class="ticks" id="legendTicks"></div>
+  </div>
+
+  <div id="scrubber">
+    <div class="row top">
+      <div class="time" id="scrubberTime">&mdash;</div>
+      <div class="wind" id="scrubberWind">&mdash;</div>
+    </div>
+    <div class="row bottom">
+      <span class="edge">Now</span>
+      <input type="range" id="hourSlider" min="0" max="167" step="1" value="0" />
+      <span class="edge">+7 days</span>
+      <button type="button" id="nowBtn">Now</button>
+    </div>
   </div>
 
   <script>
@@ -215,6 +273,234 @@
       });
       map.on('mouseout', () => { document.getElementById('elev').textContent = '—'; });
     });
+
+    // ---------------------------------------------------------------
+    // WIND: animated particle overlay + 7-day forecast scrubber
+    // ---------------------------------------------------------------
+    const WIND_API = 'https://api.open-meteo.com/v1/forecast';
+    const PARTICLE_COUNT = 400;
+    const VELOCITY_SCALE = 1.5 / 20; // px/frame per km/h -> 20 km/h ~= 1.5px/frame
+    const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    let windGrid = null;     // { lats:[3], lngs:[3], points:[9] row-major lat-major/lng-minor }
+    let forecastTimes = [];  // 168 ISO time strings
+    let selectedHour = 0;
+    let lastFetchCenter = null;
+    let initialHourSet = false;
+    let pauseAnimation = false;
+    let particles = [];
+
+    const windCanvas = document.createElement('canvas');
+    windCanvas.id = 'wind-canvas';
+    document.getElementById('map').appendChild(windCanvas);
+    const windCtx = windCanvas.getContext('2d');
+
+    function resizeWindCanvas() {
+      const rect = map.getContainer().getBoundingClientRect();
+      windCanvas.width = rect.width;
+      windCanvas.height = rect.height;
+    }
+    resizeWindCanvas();
+    window.addEventListener('resize', resizeWindCanvas);
+    map.on('resize', resizeWindCanvas);
+
+    function randomScreenPos() {
+      return { x: Math.random() * windCanvas.width, y: Math.random() * windCanvas.height };
+    }
+
+    function makeParticle() {
+      const p = randomScreenPos();
+      return { x: p.x, y: p.y, age: Math.floor(Math.random() * 80), maxAge: 40 + Math.random() * 40, trail: [] };
+    }
+
+    function respawnParticles() {
+      particles = Array.from({ length: PARTICLE_COUNT }, makeParticle);
+    }
+    respawnParticles();
+
+    function bilerp(a, b, c, d, fx, fy) {
+      return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+    }
+
+    function interpolateWind(lng, lat, hourIdx) {
+      if (!windGrid) return null;
+      const { lats, lngs, points } = windGrid;
+      const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+      const tx = clamp01((lng - lngs[0]) / (lngs[2] - lngs[0])) * 2;
+      const ty = clamp01((lat - lats[0]) / (lats[2] - lats[0])) * 2;
+      const ix = Math.min(1, Math.floor(tx));
+      const iy = Math.min(1, Math.floor(ty));
+      const fx = tx - ix;
+      const fy = ty - iy;
+
+      const p00 = points[iy * 3 + ix];
+      const p01 = points[iy * 3 + ix + 1];
+      const p10 = points[(iy + 1) * 3 + ix];
+      const p11 = points[(iy + 1) * 3 + ix + 1];
+
+      return {
+        U: bilerp(p00.U[hourIdx], p01.U[hourIdx], p10.U[hourIdx], p11.U[hourIdx], fx, fy),
+        V: bilerp(p00.V[hourIdx], p01.V[hourIdx], p10.V[hourIdx], p11.V[hourIdx], fx, fy)
+      };
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (pauseAnimation) return;
+
+      // destination-out erodes existing alpha instead of painting opaque
+      // black, so old trails fade to transparent rather than blacking out the map.
+      windCtx.globalCompositeOperation = 'destination-out';
+      windCtx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+      windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
+      windCtx.globalCompositeOperation = 'source-over';
+
+      for (const p of particles) {
+        const lngLat = map.unproject([p.x, p.y]);
+        const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
+        const u = wind ? wind.U : 0;
+        const v = wind ? wind.V : 0;
+
+        p.trail = [{ x: p.x, y: p.y }];
+        p.x += u * VELOCITY_SCALE;
+        p.y -= v * VELOCITY_SCALE;
+        p.trail.push({ x: p.x, y: p.y });
+
+        let alpha;
+        if (p.age < 10) alpha = p.age / 10;
+        else if (p.age > p.maxAge - 10) alpha = Math.max(0, (p.maxAge - p.age) / 10);
+        else alpha = 1;
+
+        windCtx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        windCtx.lineWidth = 1;
+        windCtx.beginPath();
+        windCtx.moveTo(p.trail[0].x, p.trail[0].y);
+        windCtx.lineTo(p.trail[1].x, p.trail[1].y);
+        windCtx.stroke();
+
+        p.age++;
+        const outOfBounds = p.x < 0 || p.x > windCanvas.width || p.y < 0 || p.y > windCanvas.height;
+        if (p.age >= p.maxAge || outOfBounds) {
+          const np = randomScreenPos();
+          p.x = np.x; p.y = np.y; p.age = 0; p.maxAge = 40 + Math.random() * 40; p.trail = [];
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+
+    map.on('movestart', () => {
+      pauseAnimation = true;
+      windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
+    });
+    map.on('moveend', () => {
+      pauseAnimation = false;
+      respawnParticles();
+    });
+
+    function nearestHourIndex() {
+      if (!forecastTimes.length) return 0;
+      const now = Date.now();
+      let best = 0, bestDiff = Infinity;
+      for (let i = 0; i < forecastTimes.length; i++) {
+        const diff = Math.abs(new Date(forecastTimes[i]).getTime() - now);
+        if (diff < bestDiff) { bestDiff = diff; best = i; }
+      }
+      return best;
+    }
+
+    function cardinal(deg) {
+      return CARDINALS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+    }
+
+    function formatDateTime(iso) {
+      const d = new Date(iso);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${WEEKDAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()} · ${hh}:${mm}`;
+    }
+
+    const sliderEl = document.getElementById('hourSlider');
+    const scrubberTimeEl = document.getElementById('scrubberTime');
+    const scrubberWindEl = document.getElementById('scrubberWind');
+    const nowBtn = document.getElementById('nowBtn');
+
+    function updateScrubberReadout() {
+      if (forecastTimes[selectedHour]) scrubberTimeEl.textContent = formatDateTime(forecastTimes[selectedHour]);
+      if (windGrid) {
+        const centre = windGrid.points[4]; // middle of the 3x3 grid
+        const speed = centre.speed[selectedHour];
+        const gust = centre.gust[selectedHour];
+        const dir = centre.dir[selectedHour];
+        scrubberWindEl.innerHTML = `<b>${Math.round(speed)} km/h</b> ${cardinal(dir)} &nbsp;·&nbsp; gusts <b>${Math.round(gust)} km/h</b>`;
+      }
+      sliderEl.value = selectedHour;
+    }
+
+    sliderEl.addEventListener('input', () => {
+      selectedHour = parseInt(sliderEl.value, 10);
+      updateScrubberReadout();
+    });
+    nowBtn.addEventListener('click', () => {
+      selectedHour = nearestHourIndex();
+      updateScrubberReadout();
+    });
+
+    let windFetchTimer = null;
+    function scheduleWindFetch() {
+      if (windFetchTimer) clearTimeout(windFetchTimer);
+      windFetchTimer = setTimeout(fetchWindData, 800);
+    }
+    map.on('idle', scheduleWindFetch);
+
+    async function fetchWindData() {
+      const center = map.getCenter();
+      if (lastFetchCenter) {
+        const moved = Math.hypot(center.lng - lastFetchCenter.lng, center.lat - lastFetchCenter.lat);
+        if (moved < 0.3) return;
+      }
+
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+      const lats = [0, 1, 2].map((i) => sw.lat + (ne.lat - sw.lat) * (i / 2));
+      const lngs = [0, 1, 2].map((i) => sw.lng + (ne.lng - sw.lng) * (i / 2));
+      const gridPoints = [];
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) gridPoints.push({ lat: lats[i], lng: lngs[j] });
+
+      try {
+        const responses = await Promise.all(gridPoints.map((p) => {
+          const url = `${WIND_API}?latitude=${p.lat}&longitude=${p.lng}` +
+            `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&forecast_days=7&timezone=auto`;
+          return fetch(url).then((r) => r.json());
+        }));
+
+        const points = gridPoints.map((p, idx) => {
+          const h = responses[idx].hourly;
+          const n = h.time.length;
+          const U = new Float32Array(n), V = new Float32Array(n);
+          for (let k = 0; k < n; k++) {
+            const rad = (h.wind_direction_10m[k] * Math.PI) / 180;
+            U[k] = h.wind_speed_10m[k] * Math.sin(rad);
+            V[k] = h.wind_speed_10m[k] * Math.cos(rad);
+          }
+          return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m };
+        });
+
+        windGrid = { lats, lngs, points };
+        forecastTimes = responses[0].hourly.time;
+        lastFetchCenter = center;
+
+        if (!initialHourSet) {
+          selectedHour = nearestHourIndex();
+          initialHourSet = true;
+        }
+        updateScrubberReadout();
+      } catch (err) {
+        console.error('Wind fetch failed:', err);
+      }
+    }
   </script>
 </body>
 </html>
