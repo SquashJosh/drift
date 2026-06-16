@@ -360,10 +360,9 @@
     ];
 
     // ---------------------------------------------------------------
-    // WIND: arrow grid overlay + 7-day forecast scrubber
+    // WIND: particle system + 7-day forecast scrubber
     // ---------------------------------------------------------------
     const WIND_API = 'https://api.open-meteo.com/v1/forecast';
-    const ARROW_SPACING = 70; // px between grid arrows
     const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -375,8 +374,8 @@
     let lastFetchCenter = null;
     let initialHourSet = false;
 
-    let phase = 0;
-    let arrowGrid = [];
+    const PARTICLE_COUNT = 300;
+    let particles = [];
     let pauseAnimation = false;
 
     const windCanvas = document.createElement('canvas');
@@ -390,7 +389,7 @@
       windCanvas.height = rect.height;
     }
     resizeWindCanvas();
-    window.addEventListener('resize', () => { resizeWindCanvas(); buildArrowGrid(); });
+    window.addEventListener('resize', () => { resizeWindCanvas(); respawnAllParticles(); });
     map.on('resize', resizeWindCanvas);
 
     function bilerp(a, b, c, d, fx, fy) {
@@ -435,90 +434,84 @@
       };
     }
 
-    function arrowLen(speed) {
-      return 18 + Math.min(1, Math.max(0, (speed - 5) / 45)) * 24;
-    }
-
-    function buildArrowGrid() {
-      arrowGrid = [];
-      if (!windGrid) return;
-      const rect = map.getContainer().getBoundingClientRect();
-      const cols = Math.ceil(rect.width / ARROW_SPACING) + 1;
-      const rows = Math.ceil(rect.height / ARROW_SPACING) + 1;
-      for (let r = 0; r < rows; r++) {
-        const y = r * ARROW_SPACING;
-        for (let c = 0; c < cols; c++) {
-          const x = c * ARROW_SPACING;
+    function spawnParticle(p) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const x = Math.random() * windCanvas.width;
+        const y = Math.random() * windCanvas.height;
+        let speed = 0;
+        if (windGrid) {
           const lngLat = map.unproject([x, y]);
           const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
-          if (!wind) continue;
-          const speed = Math.hypot(wind.U, wind.V);
-          if (speed < 2) continue;
-          // atan2(U,V) gives the "from" bearing in radians; +PI/2 converts to
-          // canvas rotation so the drawn +x axis points in the toward direction.
-          const angle = Math.atan2(wind.U, wind.V) + Math.PI / 2;
-          const len = arrowLen(speed);
-          const half = len / 2;
-          const dashLen = 0.4 * len;
-          const gapLen = 0.6 * len;
-          const ca = Math.cos(angle), sa = Math.sin(angle);
-          // Precompute shaft endpoints in screen space
-          const x1 = x - ca * half, y1 = y - sa * half;
-          const x2 = x + ca * half, y2 = y + sa * half;
-          // Arrowhead: tip at x2,y2; base centre 6px behind; ±2px perpendicular
-          const bx = x + ca * (half - 6), by = y + sa * (half - 6);
-          const lx = bx + 2 * sa,  ly = by - 2 * ca;
-          const rx = bx - 2 * sa,  ry = by + 2 * ca;
-          arrowGrid.push({ speed, x1, y1, x2, y2, tipX: x2, tipY: y2, lx, ly, rx, ry, dashLen, gapLen });
+          speed = wind ? Math.hypot(wind.U, wind.V) : 0;
+        }
+        if (speed >= 2 || attempt === 4) {
+          p.x = x; p.y = y;
+          p.age = 0;
+          p.maxAge = 25 + Math.floor(Math.random() * 21);
+          p.speed = speed;
+          return;
         }
       }
     }
 
+    function respawnAllParticles() {
+      for (const p of particles) spawnParticle(p);
+    }
+
+    // Initialise with staggered ages so they don't all fade in at once
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const p = { x: 0, y: 0, age: 0, maxAge: 30, speed: 0 };
+      spawnParticle(p);
+      p.age = Math.floor(Math.random() * p.maxAge);
+      particles.push(p);
+    }
+
+    function particleOpacity(age, maxAge) {
+      const fadeIn = 10, fadeOut = 8;
+      if (age < fadeIn) return 0.85 * (age / fadeIn);
+      if (age > maxAge - fadeOut) return 0.85 * Math.max(0, (maxAge - age) / fadeOut);
+      return 0.85;
+    }
+
     function animate() {
       requestAnimationFrame(animate);
-      if (pauseAnimation) return;
-      phase += 0.04;
-      windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
-      for (const a of arrowGrid) {
-        const offset = -(phase * a.speed * 0.08);
+      if (pauseAnimation || !windGrid || windCanvas.style.display === 'none') return;
 
-        // Pass 1: dark casing for contrast against warm terrain
-        windCtx.globalAlpha = 1;
-        windCtx.strokeStyle = 'rgba(10,12,11,0.55)';
-        windCtx.fillStyle = 'rgba(10,12,11,0.55)';
-        windCtx.lineWidth = 3.2;
-        windCtx.setLineDash([a.dashLen, a.gapLen]);
-        windCtx.lineDashOffset = offset;
-        windCtx.beginPath();
-        windCtx.moveTo(a.x1, a.y1);
-        windCtx.lineTo(a.x2, a.y2);
-        windCtx.stroke();
-        windCtx.setLineDash([]);
-        windCtx.beginPath();
-        windCtx.moveTo(a.tipX, a.tipY);
-        windCtx.lineTo(a.lx, a.ly);
-        windCtx.lineTo(a.rx, a.ry);
-        windCtx.closePath();
-        windCtx.fill();
+      // Fade existing trails
+      windCtx.globalCompositeOperation = 'destination-out';
+      windCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+      windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
+      windCtx.globalCompositeOperation = 'source-over';
 
-        // Pass 2: coloured arrow
-        windCtx.globalAlpha = 0.90;
-        windCtx.strokeStyle = '#ddeeff';
-        windCtx.fillStyle = '#ddeeff';
-        windCtx.lineWidth = 1.8;
-        windCtx.setLineDash([a.dashLen, a.gapLen]);
-        windCtx.lineDashOffset = offset;
-        windCtx.beginPath();
-        windCtx.moveTo(a.x1, a.y1);
-        windCtx.lineTo(a.x2, a.y2);
-        windCtx.stroke();
-        windCtx.setLineDash([]);
-        windCtx.beginPath();
-        windCtx.moveTo(a.tipX, a.tipY);
-        windCtx.lineTo(a.lx, a.ly);
-        windCtx.lineTo(a.rx, a.ry);
-        windCtx.closePath();
-        windCtx.fill();
+      windCtx.fillStyle = '#ddeeff';
+      for (const p of particles) {
+        const lngLat = map.unproject([p.x, p.y]);
+        const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
+
+        if (wind) {
+          const speed = Math.hypot(wind.U, wind.V);
+          if (speed > 0) {
+            const speedPx = speed * 0.06;
+            p.x += (wind.U / speed) * speedPx;
+            p.y -= (wind.V / speed) * speedPx;
+          }
+          p.speed = speed;
+        }
+
+        const opacity = particleOpacity(p.age, p.maxAge);
+        if (opacity > 0) {
+          windCtx.globalAlpha = opacity;
+          windCtx.beginPath();
+          windCtx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
+          windCtx.fill();
+        }
+
+        p.age++;
+        if (p.age >= p.maxAge ||
+            p.x < -10 || p.x > windCanvas.width + 10 ||
+            p.y < -10 || p.y > windCanvas.height + 10) {
+          spawnParticle(p);
+        }
       }
       windCtx.globalAlpha = 1;
     }
@@ -531,7 +524,7 @@
     });
     map.on('moveend', () => {
       pauseAnimation = false;
-      buildArrowGrid();
+      respawnAllParticles();
     });
 
     function nearestHourIndex() {
@@ -588,7 +581,7 @@
           renderDayChips();
           updateSliderPosition();
           updateScrubberReadout();
-          buildArrowGrid();
+          respawnAllParticles();
         });
         container.appendChild(btn);
       }
@@ -610,7 +603,7 @@
     sliderEl.addEventListener('input', () => {
       selectedHour = Math.min(167, selectedDay * 24 + parseInt(sliderEl.value, 10));
       updateScrubberReadout();
-      buildArrowGrid();
+      respawnAllParticles();
     });
 
     nowBtn.addEventListener('click', () => {
@@ -620,7 +613,7 @@
       renderDayChips();
       updateSliderPosition();
       updateScrubberReadout();
-      buildArrowGrid();
+      respawnAllParticles();
     });
 
     // Initialise placeholder chips on page load
@@ -692,7 +685,7 @@
         renderDayChips();
         updateSliderPosition();
         updateScrubberReadout();
-        buildArrowGrid();
+        respawnAllParticles();
       } catch (err) {
         console.error('Wind fetch failed:', err);
       } finally {
