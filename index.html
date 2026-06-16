@@ -52,12 +52,14 @@
       font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
       color: var(--ink-dim); align-self: center;
     }
-    #legend .bar { width: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--hair); }
+    #legend .bar {
+      width: 12px; height: 140px; border-radius: 2px;
+      box-shadow: inset 0 0 0 1px var(--hair);
+    }
     #legend .ticks {
       display: flex; flex-direction: column; justify-content: space-between;
       font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-dim);
     }
-    #legend .ticks b { color: var(--ink); font-weight: 500; }
 
     .maplibregl-ctrl-top-right { margin-top: 56px; }
     .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
@@ -67,7 +69,7 @@
 <body>
   <div id="topbar">
     <h1>Drift</h1>
-    <div id="readout">Canadian Rockies &nbsp;·&nbsp; <b id="elev">&mdash;</b></div>
+    <div id="readout">Ottawa &nbsp;·&nbsp; <b id="elev">&mdash;</b></div>
   </div>
   <div id="map"></div>
 
@@ -78,75 +80,131 @@
   </div>
 
   <script>
-    const MAPBOX_TOKEN = 'pk.eyJ1Ijoiam9zaHJlbmF1ZCIsImEiOiJjbXBvdDF3NDQwNDN6MnJwcXkwZnp4MnlmIn0.hD5_oumK4BA1yGEN1Wzusw';
-
-    const ELEV_STOPS = [
-      [1200, '#16302a'], [1500, '#244d3d'], [1800, '#3d6b4a'],
-      [2100, '#6e8757'], [2300, '#a89968'], [2600, '#b39173'],
-      [2900, '#9c958c'], [3200, '#d2cec5'], [3500, '#ffffff'],
+    // Green -> yellow -> orange -> red elevation ramp. Map paint uses these
+    // baked to ~0.55 alpha so the basemap shows through; legend uses full
+    // opacity for readability against the dark panel.
+    const RAMP_RGB = [
+      '34, 139, 34',   // forest green (low)
+      '154, 205, 50',  // yellow-green
+      '255, 215, 0',   // gold
+      '255, 140, 0',   // dark orange
+      '220, 20, 60',   // crimson (high)
     ];
-    const colorReliefExpr = ['interpolate', ['linear'], ['elevation']];
-    ELEV_STOPS.forEach(([m, c]) => { colorReliefExpr.push(m, c); });
 
     const DEM_SOURCE = {
       type: 'raster-dem',
-      tiles: ['https://api.mapbox.com/v4/mapbox.terrain-rgb/{z}/{x}/{y}.pngraw?access_token=' + MAPBOX_TOKEN],
-      encoding: 'mapbox',
+      tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+      encoding: 'terrarium',
       tileSize: 256,
-      maxzoom: 14,
-      attribution: "DEM &copy; <a href='https://www.mapbox.com/about/maps/'>Mapbox</a>"
+      maxzoom: 15,
+      attribution: "Elevation: <a href='https://registry.opendata.aws/terrain-tiles/'>AWS Terrain Tiles</a> (Mapzen / 3DEP / others)"
     };
 
-    const HILLSHADE_PAINT = {
-      'hillshade-exaggeration': 0.5,
-      'hillshade-shadow-color': 'rgba(8, 12, 14, 0.8)',
-      'hillshade-highlight-color': 'rgba(255, 250, 240, 0.45)',
-      'hillshade-accent-color': 'rgba(20, 26, 28, 0.35)',
-      'hillshade-illumination-direction': 315
-    };
+    function buildColorReliefExpr(min, max) {
+      let lo = min, hi = max;
+      if (hi - lo < 1e-6) hi = lo + 1e-6; // guard against a flat viewport
+      const n = RAMP_RGB.length;
+      const expr = ['interpolate', ['linear'], ['elevation']];
+      for (let i = 0; i < n; i++) {
+        const val = lo + (hi - lo) * (i / (n - 1));
+        expr.push(val, `rgba(${RAMP_RGB[i]}, 0.55)`);
+      }
+      return expr;
+    }
 
-    const SKY = {
-      'sky-color': '#8fb2d1', 'sky-horizon-blend': 0.6,
-      'horizon-color': '#cddde8', 'horizon-fog-blend': 0.6,
-      'fog-color': '#e3ebef', 'fog-ground-blend': 0.05,
-      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 10, 0]
-    };
+    let elevationLayerId = 'elevation-tint';
+    let beforeLayerId; // first symbol layer in the liberty style, captured at style-load time
 
     const map = new maplibregl.Map({
       container: 'map',
       style: { version: 8, sources: {}, layers: [] },
-      center: [-115.5708, 51.1784],
-      zoom: 10, pitch: 65, bearing: -20, maxPitch: 80, antialias: true
+      center: [-75.81974, 45.27836],
+      zoom: 11,
+      pitch: 0,
+      maxPitch: 0,
+      antialias: true
     });
 
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     map.setStyle('https://tiles.openfreemap.org/styles/liberty', {
       transformStyle: (previous, next) => {
-        next.sources = { ...next.sources, dem: DEM_SOURCE };
+        next.sources = { ...next.sources, 'terrain-dem': DEM_SOURCE };
+
         const layers = next.layers.slice();
-        let at = layers.findIndex(l => l['source-layer'] === 'transportation');
-        if (at < 0) at = layers.length;
-        layers.splice(at, 0,
-          { id: 'elevation', type: 'color-relief', source: 'dem',
-            paint: { 'color-relief-color': colorReliefExpr } },
-          { id: 'shade', type: 'hillshade', source: 'dem', paint: HILLSHADE_PAINT }
-        );
+        let symbolIndex = layers.findIndex(l => l.type === 'symbol');
+        if (symbolIndex < 0) symbolIndex = layers.length;
+        beforeLayerId = layers[symbolIndex] ? layers[symbolIndex].id : undefined;
+
+        layers.splice(symbolIndex, 0, {
+          id: elevationLayerId,
+          type: 'color-relief',
+          source: 'terrain-dem',
+          paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
+        });
         next.layers = layers;
-        next.terrain = { source: 'dem', exaggeration: 1.4 };
-        next.sky = SKY;
+
+        next.terrain = { source: 'terrain-dem', exaggeration: 1 };
         return next;
       }
     });
 
-    (function buildLegend() {
-      const min = ELEV_STOPS[0][0], max = ELEV_STOPS[ELEV_STOPS.length - 1][0], span = max - min;
-      const stops = ELEV_STOPS.map(([m, c]) => `${c} ${((m - min) / span * 100).toFixed(1)}%`);
-      document.getElementById('legendBar').style.background = `linear-gradient(to top, ${stops.join(', ')})`;
-      const ticksAt = [3500, 2900, 2300, 1800, 1200];
-      document.getElementById('legendTicks').innerHTML = ticksAt
-        .map(m => `<span>${m === 2300 ? '<b>2,300</b> treeline' : m.toLocaleString() + ' m'}</span>`)
+    function updateColorRelief(min, max) {
+      const expr = buildColorReliefExpr(min, max);
+      try {
+        map.setPaintProperty(elevationLayerId, 'color-relief-color', expr);
+      } catch (e) {
+        if (map.getLayer(elevationLayerId)) map.removeLayer(elevationLayerId);
+        map.addLayer({
+          id: elevationLayerId,
+          type: 'color-relief',
+          source: 'terrain-dem',
+          paint: { 'color-relief-color': expr }
+        }, beforeLayerId);
+      }
+    }
+
+    function updateLegend(min, max) {
+      const N = 6;
+      const ticks = [];
+      for (let i = 0; i < N; i++) ticks.push(min + (max - min) * (i / (N - 1)));
+      document.getElementById('legendTicks').innerHTML = ticks
+        .slice().reverse()
+        .map(v => `<span>${Math.round(v).toLocaleString()} m</span>`)
         .join('');
+    }
+
+    const GRID = 20;
+    function sampleAndRecolor() {
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+      const samples = [];
+      for (let i = 0; i < GRID; i++) {
+        const lng = sw.lng + (ne.lng - sw.lng) * (i / (GRID - 1));
+        for (let j = 0; j < GRID; j++) {
+          const lat = sw.lat + (ne.lat - sw.lat) * (j / (GRID - 1));
+          const el = map.queryTerrainElevation([lng, lat], { exaggerated: false });
+          if (el != null) samples.push(el);
+        }
+      }
+      if (samples.length < 40) return; // DEM not ready yet; next idle/moveend retries
+      const min = Math.min(...samples);
+      const max = Math.max(...samples);
+      updateColorRelief(min, max);
+      updateLegend(min, max);
+    }
+
+    let debounceTimer = null;
+    function scheduleRecolor() {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(sampleAndRecolor, 150);
+    }
+    map.on('moveend', scheduleRecolor);
+    map.on('idle', scheduleRecolor);
+
+    (function buildLegendBar() {
+      const stops = RAMP_RGB.map((rgb, i) => `rgb(${rgb}) ${(i / (RAMP_RGB.length - 1) * 100).toFixed(1)}%`);
+      document.getElementById('legendBar').style.background = `linear-gradient(to top, ${stops.join(', ')})`;
     })();
 
     let raf = null;
@@ -154,11 +212,12 @@
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = null;
-        const el = map.queryTerrainElevation(e.lngLat);
+        const el = map.queryTerrainElevation(e.lngLat, { exaggerated: false });
         document.getElementById('elev').textContent = (el == null) ? '—' : Math.round(el).toLocaleString() + ' m';
       });
     });
     map.on('mouseout', () => { document.getElementById('elev').textContent = '—'; });
+
     map.on('error', (e) => console.error('MapLibre:', e && e.error ? e.error : e));
   </script>
 </body>
