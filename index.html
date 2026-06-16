@@ -377,6 +377,7 @@
     const PARTICLE_COUNT = 300;
     let particles = [];
     let pauseAnimation = false;
+    let currentScreenGrid = null; // updated once per frame, used by spawnParticle
 
     const windCanvas = document.createElement('canvas');
     windCanvas.id = 'wind-canvas';
@@ -434,15 +435,33 @@
       };
     }
 
+    // Inverse-distance weighting across the 9 screen-projected grid points.
+    function interpolateScreenWind(x, y, sg) {
+      let wU = 0, wV = 0, wSum = 0;
+      for (const pt of sg) {
+        const dx = x - pt.sx, dy = y - pt.sy;
+        const d2 = dx * dx + dy * dy;
+        const w = d2 < 1 ? 1e6 : 1 / d2;
+        wU += pt.U * w;
+        wV += pt.V * w;
+        wSum += w;
+      }
+      return wSum > 0 ? { U: wU / wSum, V: wV / wSum } : null;
+    }
+
     function spawnParticle(p) {
+      const sg = currentScreenGrid;
       for (let attempt = 0; attempt < 5; attempt++) {
         const x = Math.random() * windCanvas.width;
         const y = Math.random() * windCanvas.height;
         let speed = 0;
-        if (windGrid) {
+        if (sg) {
+          const wind = interpolateScreenWind(x, y, sg);
+          speed = wind ? Math.sqrt(wind.U * wind.U + wind.V * wind.V) : 0;
+        } else if (windGrid) {
           const lngLat = map.unproject([x, y]);
           const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
-          speed = wind ? Math.hypot(wind.U, wind.V) : 0;
+          speed = wind ? Math.sqrt(wind.U * wind.U + wind.V * wind.V) : 0;
         }
         if (speed >= 2 || attempt === 4) {
           p.x = x; p.y = y;
@@ -477,6 +496,15 @@
       requestAnimationFrame(animate);
       if (pauseAnimation || !windGrid || windCanvas.style.display === 'none') return;
 
+      // 9 map.project() calls per frame instead of 300 map.unproject() calls
+      currentScreenGrid = windGrid.points
+        .map(pt => {
+          if (!pt) return null;
+          const px = map.project([pt.lng, pt.lat]);
+          return { sx: px.x, sy: px.y, U: pt.U[selectedHour], V: pt.V[selectedHour] };
+        })
+        .filter(Boolean);
+
       // Fade existing trails
       windCtx.globalCompositeOperation = 'destination-out';
       windCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
@@ -485,8 +513,7 @@
 
       windCtx.fillStyle = '#ddeeff';
       for (const p of particles) {
-        const lngLat = map.unproject([p.x, p.y]);
-        const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
+        const wind = interpolateScreenWind(p.x, p.y, currentScreenGrid);
 
         if (wind) {
           const spd = Math.sqrt(wind.U * wind.U + wind.V * wind.V);
@@ -495,7 +522,7 @@
             p.x += (wind.U / spd) * speedPx;
             p.y += (wind.V / spd) * speedPx;
           }
-          p.speed = spd;
+          p.speed = spd || 0;
         }
 
         const opacity = particleOpacity(p.age, p.maxAge);
