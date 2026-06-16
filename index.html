@@ -288,7 +288,7 @@
       const b = map.getBounds();
       const key = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]
         .map(v => v.toFixed(4)).join(',');
-      if (key === lastSampledBounds) return;
+      if (lastSampledBounds !== null && key === lastSampledBounds) return;
 
       const sw = b.getSouthWest(), ne = b.getNorthEast();
       const samples = [];
@@ -336,6 +336,7 @@
       }, beforeLayerId);
 
       sampleAndRecolor();
+      fetchWindData();
 
       map.on('moveend', scheduleRecolor);
       map.on('idle', scheduleRecolor);
