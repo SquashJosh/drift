@@ -241,7 +241,7 @@
       return expr;
     }
 
-    let elevationLayerId = 'elevation-tint';
+    const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
     const map = new maplibregl.Map({
@@ -282,9 +282,15 @@
     }
 
     const GRID = 20;
+    let lastSampledBounds = null;
+
     function sampleAndRecolor() {
-      const bounds = map.getBounds();
-      const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+      const b = map.getBounds();
+      const key = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]
+        .map(v => v.toFixed(4)).join(',');
+      if (key === lastSampledBounds) return;
+
+      const sw = b.getSouthWest(), ne = b.getNorthEast();
       const samples = [];
       for (let i = 0; i < GRID; i++) {
         const lng = sw.lng + (ne.lng - sw.lng) * (i / (GRID - 1));
@@ -299,6 +305,7 @@
       const max = Math.max(...samples);
       updateColorRelief(min, max);
       updateLegend(min, max);
+      lastSampledBounds = key;
     }
 
     let debounceTimer = null;
@@ -390,6 +397,20 @@
       return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
     }
 
+    function nearestValidPoint(points, row, col) {
+      if (points[row * 3 + col]) return points[row * 3 + col];
+      let best = null, bestDist = Infinity;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const p = points[r * 3 + c];
+          if (!p) continue;
+          const d = Math.abs(r - row) + Math.abs(c - col);
+          if (d < bestDist) { bestDist = d; best = p; }
+        }
+      }
+      return best;
+    }
+
     function interpolateWind(lng, lat, hourIdx) {
       if (!windGrid) return null;
       const { lats, lngs, points } = windGrid;
@@ -402,10 +423,11 @@
       const fx = tx - ix;
       const fy = ty - iy;
 
-      const p00 = points[iy * 3 + ix];
-      const p01 = points[iy * 3 + ix + 1];
-      const p10 = points[(iy + 1) * 3 + ix];
-      const p11 = points[(iy + 1) * 3 + ix + 1];
+      const p00 = nearestValidPoint(points, iy,     ix);
+      const p01 = nearestValidPoint(points, iy,     ix + 1);
+      const p10 = nearestValidPoint(points, iy + 1, ix);
+      const p11 = nearestValidPoint(points, iy + 1, ix + 1);
+      if (!p00 || !p01 || !p10 || !p11) return null;
 
       return {
         U: bilerp(p00.U[hourIdx], p01.U[hourIdx], p10.U[hourIdx], p11.U[hourIdx], fx, fy),
@@ -435,52 +457,76 @@
           // atan2(U,V) gives the "from" bearing in radians; +PI/2 converts to
           // canvas rotation so the drawn +x axis points in the toward direction.
           const angle = Math.atan2(wind.U, wind.V) + Math.PI / 2;
-          arrowGrid.push({ x, y, angle, speed });
+          const len = arrowLen(speed);
+          const half = len / 2;
+          const dashLen = 0.4 * len;
+          const gapLen = 0.6 * len;
+          const ca = Math.cos(angle), sa = Math.sin(angle);
+          // Precompute shaft endpoints in screen space
+          const x1 = x - ca * half, y1 = y - sa * half;
+          const x2 = x + ca * half, y2 = y + sa * half;
+          // Arrowhead: tip at x2,y2; base centre 6px behind; ±2px perpendicular
+          const bx = x + ca * (half - 6), by = y + sa * (half - 6);
+          const lx = bx + 2 * sa,  ly = by - 2 * ca;
+          const rx = bx - 2 * sa,  ry = by + 2 * ca;
+          arrowGrid.push({ speed, x1, y1, x2, y2, tipX: x2, tipY: y2, lx, ly, rx, ry, dashLen, gapLen });
         }
       }
     }
 
     function animate() {
       requestAnimationFrame(animate);
-      phase += 0.04;
       if (pauseAnimation) return;
+      phase += 0.04;
       windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
       for (const a of arrowGrid) {
-        const len = arrowLen(a.speed);
-        const half = len / 2;
-        const dashLen = 0.4 * len;
-        const gapLen = 0.6 * len;
+        const offset = -(phase * a.speed * 0.08);
 
-        windCtx.save();
-        windCtx.translate(a.x, a.y);
-        windCtx.rotate(a.angle);
-        windCtx.globalAlpha = 0.90;
-
-        windCtx.strokeStyle = '#ddeeff';
-        windCtx.fillStyle = '#ddeeff';
-        windCtx.lineWidth = 1.8;
-        windCtx.setLineDash([dashLen, gapLen]);
-        windCtx.lineDashOffset = -(phase * a.speed * 0.08);
+        // Pass 1: dark casing for contrast against warm terrain
+        windCtx.globalAlpha = 1;
+        windCtx.strokeStyle = 'rgba(10,12,11,0.55)';
+        windCtx.fillStyle = 'rgba(10,12,11,0.55)';
+        windCtx.lineWidth = 3.2;
+        windCtx.setLineDash([a.dashLen, a.gapLen]);
+        windCtx.lineDashOffset = offset;
         windCtx.beginPath();
-        windCtx.moveTo(-half, 0);
-        windCtx.lineTo(half, 0);
+        windCtx.moveTo(a.x1, a.y1);
+        windCtx.lineTo(a.x2, a.y2);
         windCtx.stroke();
-
         windCtx.setLineDash([]);
         windCtx.beginPath();
-        windCtx.moveTo(half, 0);
-        windCtx.lineTo(half - 6, -2);
-        windCtx.lineTo(half - 6, 2);
+        windCtx.moveTo(a.tipX, a.tipY);
+        windCtx.lineTo(a.lx, a.ly);
+        windCtx.lineTo(a.rx, a.ry);
         windCtx.closePath();
         windCtx.fill();
 
-        windCtx.restore();
+        // Pass 2: coloured arrow
+        windCtx.globalAlpha = 0.90;
+        windCtx.strokeStyle = '#ddeeff';
+        windCtx.fillStyle = '#ddeeff';
+        windCtx.lineWidth = 1.8;
+        windCtx.setLineDash([a.dashLen, a.gapLen]);
+        windCtx.lineDashOffset = offset;
+        windCtx.beginPath();
+        windCtx.moveTo(a.x1, a.y1);
+        windCtx.lineTo(a.x2, a.y2);
+        windCtx.stroke();
+        windCtx.setLineDash([]);
+        windCtx.beginPath();
+        windCtx.moveTo(a.tipX, a.tipY);
+        windCtx.lineTo(a.lx, a.ly);
+        windCtx.lineTo(a.rx, a.ry);
+        windCtx.closePath();
+        windCtx.fill();
       }
+      windCtx.globalAlpha = 1;
     }
     requestAnimationFrame(animate);
 
     map.on('movestart', () => {
       pauseAnimation = true;
+      lastSampledBounds = null;
       windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
     });
     map.on('moveend', () => {
@@ -551,7 +597,8 @@
     function updateScrubberReadout() {
       if (forecastTimes[selectedHour]) scrubberTimeEl.textContent = formatDateTime(forecastTimes[selectedHour]);
       if (windGrid) {
-        const centre = windGrid.points[4]; // middle of the 3x3 grid
+        const centre = windGrid.points[4] || windGrid.points.find(p => p != null);
+        if (!centre) return;
         const speed = centre.speed[selectedHour];
         const gust = centre.gust[selectedHour];
         const dir = centre.dir[selectedHour];
@@ -580,6 +627,8 @@
     renderDayChips();
 
     let windFetchTimer = null;
+    let fetchToken = 0;
+
     function scheduleWindFetch() {
       if (windFetchTimer) clearTimeout(windFetchTimer);
       windFetchTimer = setTimeout(fetchWindData, 400);
@@ -587,6 +636,7 @@
     map.on('idle', scheduleWindFetch);
 
     async function fetchWindData() {
+      const token = ++fetchToken;
       const center = map.getCenter();
       if (lastFetchCenter) {
         const moved = Math.hypot(center.lng - lastFetchCenter.lng, center.lat - lastFetchCenter.lat);
@@ -605,11 +655,15 @@
         const responses = await Promise.all(gridPoints.map((p) => {
           const url = `${WIND_API}?latitude=${p.lat}&longitude=${p.lng}` +
             `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&forecast_days=7&timezone=auto`;
-          return fetch(url).then((r) => r.json());
+          return fetch(url).then((r) => r.ok ? r.json() : null).catch(() => null);
         }));
 
+        if (token !== fetchToken) return; // stale fetch, discard
+
         const points = gridPoints.map((p, idx) => {
-          const h = responses[idx].hourly;
+          const data = responses[idx];
+          if (!data || !data.hourly) return null;
+          const h = data.hourly;
           const n = h.time.length;
           const U = new Float32Array(n), V = new Float32Array(n);
           for (let k = 0; k < n; k++) {
@@ -620,8 +674,14 @@
           return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m };
         });
 
+        const validCount = points.filter(p => p != null).length;
+        if (validCount < 4) {
+          console.warn(`Wind fetch: only ${validCount} valid points, keeping stale data`);
+          return;
+        }
+
         windGrid = { lats, lngs, points };
-        forecastTimes = responses[0].hourly.time;
+        forecastTimes = (responses.find(r => r && r.hourly) || {}).hourly?.time || forecastTimes;
         lastFetchCenter = center;
 
         if (!initialHourSet) {
