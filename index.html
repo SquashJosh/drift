@@ -65,7 +65,7 @@
     .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
     .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
 
-    #wind-canvas {
+    #wind-arrows {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none; z-index: 5;
     }
@@ -117,6 +117,7 @@
     <div id="readout"><b id="elev">&mdash;</b></div>
   </div>
   <div id="map"></div>
+  <div id="wind-arrows"></div>
 
   <div id="legend">
     <div class="title">Elevation</div>
@@ -275,11 +276,10 @@
     });
 
     // ---------------------------------------------------------------
-    // WIND: animated particle overlay + 7-day forecast scrubber
+    // WIND: arrow grid overlay + 7-day forecast scrubber
     // ---------------------------------------------------------------
     const WIND_API = 'https://api.open-meteo.com/v1/forecast';
-    const PARTICLE_COUNT = 400;
-    const VELOCITY_SCALE = 1.5 / 20; // px/frame per km/h -> 20 km/h ~= 1.5px/frame
+    const ARROW_SPACING = 80; // px between grid arrows
     const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -289,36 +289,8 @@
     let selectedHour = 0;
     let lastFetchCenter = null;
     let initialHourSet = false;
-    let pauseAnimation = false;
-    let particles = [];
 
-    const windCanvas = document.createElement('canvas');
-    windCanvas.id = 'wind-canvas';
-    document.getElementById('map').appendChild(windCanvas);
-    const windCtx = windCanvas.getContext('2d');
-
-    function resizeWindCanvas() {
-      const rect = map.getContainer().getBoundingClientRect();
-      windCanvas.width = rect.width;
-      windCanvas.height = rect.height;
-    }
-    resizeWindCanvas();
-    window.addEventListener('resize', resizeWindCanvas);
-    map.on('resize', resizeWindCanvas);
-
-    function randomScreenPos() {
-      return { x: Math.random() * windCanvas.width, y: Math.random() * windCanvas.height };
-    }
-
-    function makeParticle() {
-      const p = randomScreenPos();
-      return { x: p.x, y: p.y, age: Math.floor(Math.random() * 80), maxAge: 40 + Math.random() * 40, trail: [] };
-    }
-
-    function respawnParticles() {
-      particles = Array.from({ length: PARTICLE_COUNT }, makeParticle);
-    }
-    respawnParticles();
+    const windArrowsEl = document.getElementById('wind-arrows');
 
     function bilerp(a, b, c, d, fx, fy) {
       return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
@@ -347,58 +319,57 @@
       };
     }
 
-    function animate() {
-      requestAnimationFrame(animate);
-      if (pauseAnimation) return;
+    function bearingFromUV(u, v) {
+      // Inverse of U = speed*sin(theta), V = speed*cos(theta) -> theta is the
+      // Open-Meteo "wind from" bearing, clockwise from north.
+      let deg = (Math.atan2(u, v) * 180) / Math.PI;
+      if (deg < 0) deg += 360;
+      return deg;
+    }
 
-      // destination-out erodes existing alpha instead of painting opaque
-      // black, so old trails fade to transparent rather than blacking out the map.
-      windCtx.globalCompositeOperation = 'destination-out';
-      windCtx.fillStyle = 'rgba(0, 0, 0, 0.04)';
-      windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
-      windCtx.globalCompositeOperation = 'source-over';
+    function arrowLength(speed) {
+      const s = Math.min(60, Math.max(0, speed));
+      return 8 + (s / 60) * (28 - 8);
+    }
 
-      for (const p of particles) {
-        const lngLat = map.unproject([p.x, p.y]);
-        const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
-        const u = wind ? wind.U : 0;
-        const v = wind ? wind.V : 0;
+    function renderArrowGrid() {
+      if (!windGrid) { windArrowsEl.innerHTML = ''; return; }
+      const rect = map.getContainer().getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const cols = Math.ceil(w / ARROW_SPACING) + 1;
+      const rows = Math.ceil(h / ARROW_SPACING) + 1;
 
-        p.trail = [{ x: p.x, y: p.y }];
-        p.x += u * VELOCITY_SCALE;
-        p.y -= v * VELOCITY_SCALE;
-        p.trail.push({ x: p.x, y: p.y });
+      let svg = `<svg width="${w}" height="${h}" style="display:block;">`;
+      for (let r = 0; r < rows; r++) {
+        const y = r * ARROW_SPACING;
+        for (let c = 0; c < cols; c++) {
+          const x = c * ARROW_SPACING;
+          const lngLat = map.unproject([x, y]);
+          const wind = interpolateWind(lngLat.lng, lngLat.lat, selectedHour);
+          if (!wind) continue;
 
-        let alpha;
-        if (p.age < 10) alpha = p.age / 10;
-        else if (p.age > p.maxAge - 10) alpha = Math.max(0, (p.maxAge - p.age) / 10);
-        else alpha = 1;
+          const speed = Math.hypot(wind.U, wind.V);
+          // arrow points where the air is moving, i.e. 180 deg from the
+          // "wind from" bearing Open-Meteo reports
+          const towardBearing = (bearingFromUV(wind.U, wind.V) + 180) % 360;
+          const half = arrowLength(speed) / 2;
 
-        windCtx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-        windCtx.lineWidth = 1;
-        windCtx.beginPath();
-        windCtx.moveTo(p.trail[0].x, p.trail[0].y);
-        windCtx.lineTo(p.trail[1].x, p.trail[1].y);
-        windCtx.stroke();
-
-        p.age++;
-        const outOfBounds = p.x < 0 || p.x > windCanvas.width || p.y < 0 || p.y > windCanvas.height;
-        if (p.age >= p.maxAge || outOfBounds) {
-          const np = randomScreenPos();
-          p.x = np.x; p.y = np.y; p.age = 0; p.maxAge = 40 + Math.random() * 40; p.trail = [];
+          svg += `<g transform="translate(${x}, ${y}) rotate(${towardBearing})" opacity="0.55">` +
+            `<line x1="0" y1="${half}" x2="0" y2="${-half}" stroke="white" stroke-width="1.5" />` +
+            `<polygon points="0,${-half} -3,${-half + 6} 3,${-half + 6}" fill="white" />` +
+            `</g>`;
+          if (speed > 5) {
+            svg += `<text x="${x}" y="${y + half + 12}" fill="white" opacity="0.55" font-size="9" ` +
+              `text-anchor="middle" font-family="sans-serif">${Math.round(speed)}</text>`;
+          }
         }
       }
+      svg += `</svg>`;
+      windArrowsEl.innerHTML = svg;
     }
-    requestAnimationFrame(animate);
-
-    map.on('movestart', () => {
-      pauseAnimation = true;
-      windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
-    });
-    map.on('moveend', () => {
-      pauseAnimation = false;
-      respawnParticles();
-    });
+    renderArrowGrid();
+    window.addEventListener('resize', renderArrowGrid);
+    map.on('moveend', renderArrowGrid);
 
     function nearestHourIndex() {
       if (!forecastTimes.length) return 0;
@@ -442,10 +413,12 @@
     sliderEl.addEventListener('input', () => {
       selectedHour = parseInt(sliderEl.value, 10);
       updateScrubberReadout();
+      renderArrowGrid();
     });
     nowBtn.addEventListener('click', () => {
       selectedHour = nearestHourIndex();
       updateScrubberReadout();
+      renderArrowGrid();
     });
 
     let windFetchTimer = null;
@@ -497,6 +470,7 @@
           initialHourSet = true;
         }
         updateScrubberReadout();
+        renderArrowGrid();
       } catch (err) {
         console.error('Wind fetch failed:', err);
       }
