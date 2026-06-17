@@ -206,6 +206,31 @@
     #pfConditions { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
     #pfDays { display: flex; justify-content: space-evenly; align-items: center; padding: 12px 8px; }
     #pfDetail { padding: 8px 14px 14px; border-top: 1px solid var(--hair); }
+
+    .drift-pin {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(221, 238, 255, 0.9);
+      background: rgba(221, 238, 255, 0.15);
+      box-shadow: 0 0 0 0 rgba(221, 238, 255, 0.4);
+      animation: pin-pulse 1.5s ease-out 1;
+      pointer-events: none;
+    }
+    .drift-pin::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: rgba(221, 238, 255, 0.95);
+    }
+    @keyframes pin-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(221,238,255,0.5); }
+      70%  { box-shadow: 0 0 0 10px rgba(221,238,255,0); }
+      100% { box-shadow: 0 0 0 0 rgba(221,238,255,0); }
+    }
   </style>
 </head>
 <body>
@@ -870,6 +895,7 @@
     let pointForecastName = null;
     let selectedDayCell = 0;
     let dayData = null;
+    let currentMarker = null;
 
     const pfEl = document.getElementById('pointForecast');
     const pfNameEl = document.getElementById('pfName');
@@ -1010,6 +1036,7 @@
       pfEl.style.display = 'none';
       pointForecast = null;
       dayData = null;
+      if (currentMarker) { currentMarker.remove(); currentMarker = null; }
     });
 
     map.on('click', async (e) => {
@@ -1020,6 +1047,13 @@
         ? named.properties.name
         : Math.abs(lat).toFixed(2) + '°' + (lat >= 0 ? 'N' : 'S') + ' · ' + Math.abs(lng).toFixed(2) + '°' + (lng >= 0 ? 'E' : 'W');
       pointForecastLocation = e.lngLat;
+
+      const el = document.createElement('div');
+      el.className = 'drift-pin';
+      if (currentMarker) currentMarker.remove();
+      currentMarker = new maplibregl.Marker({ element: el })
+        .setLngLat(e.lngLat)
+        .addTo(map);
 
       pfNameEl.textContent = pointForecastName;
       pfConditionsEl.textContent = 'Fetching forecast…';
