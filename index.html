@@ -168,6 +168,14 @@
     }
     #nowBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
 
+    #scrubberToggle {
+      background: transparent; border: none; cursor: pointer;
+      color: var(--ink-dim); font-size: 14px; padding: 0 0 0 12px; line-height: 1;
+    }
+    #scrubberToggle:hover { color: var(--ink); }
+    #scrubber.collapsed .row.top { border-bottom: 1px solid var(--hair); }
+    #scrubber.collapsed { gap: 0; }
+
     #pointForecast {
       position: fixed; left: 10px; bottom: 220px; z-index: 15;
       width: 300px; max-height: 60vh;
@@ -242,6 +250,7 @@
     <div class="row top">
       <div class="time" id="scrubberTime">&mdash;</div>
       <div class="wind" id="scrubberWind">&mdash;</div>
+      <button type="button" id="scrubberToggle">&#8743;</button>
     </div>
     <div class="row middle" id="dayChips"></div>
     <div class="row bottom">
@@ -781,6 +790,23 @@
         hideWindLoading();
       }
     }
+
+    // ---------------------------------------------------------------
+    // SCRUBBER COLLAPSE
+    // ---------------------------------------------------------------
+    let scrubberCollapsed = false;
+    const scrubberEl = document.getElementById('scrubber');
+    const scrubberToggleEl = document.getElementById('scrubberToggle');
+    const dayChipsRowEl = document.getElementById('dayChips');
+    const sliderRowEl = dayChipsRowEl.nextElementSibling;
+
+    scrubberToggleEl.addEventListener('click', () => {
+      scrubberCollapsed = !scrubberCollapsed;
+      scrubberToggleEl.textContent = scrubberCollapsed ? '∨' : '∧';
+      dayChipsRowEl.style.display = scrubberCollapsed ? 'none' : '';
+      sliderRowEl.style.display = scrubberCollapsed ? 'none' : '';
+      scrubberEl.classList.toggle('collapsed', scrubberCollapsed);
+    });
 
     // ---------------------------------------------------------------
     // LAYERS PANEL
