@@ -167,6 +167,50 @@
       padding: 4px 8px; cursor: pointer;
     }
     #nowBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+    #pointForecast {
+      position: fixed; left: 10px; bottom: 220px; z-index: 15;
+      width: 300px; max-height: 60vh;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 8px;
+      font-family: var(--ui); color: var(--ink);
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    @media (max-width: 600px) {
+      #pointForecast {
+        left: 0; right: 0; bottom: 0; width: 100%; max-height: 50vh;
+        border-radius: 8px 8px 0 0;
+      }
+    }
+    #pfHeader {
+      padding: 12px 14px 8px; border-bottom: 1px solid var(--hair); flex-shrink: 0;
+    }
+    #pfTitleRow {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
+    }
+    #pfName { font-size: 13px; font-weight: 500; color: var(--ink); }
+    #pfClose {
+      background: transparent; border: none; cursor: pointer;
+      color: var(--ink-dim); font-size: 18px; line-height: 1; padding: 0 0 0 8px;
+    }
+    #pfClose:hover { color: var(--ink); }
+    #pfConditions { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    #pfRows { overflow-y: auto; flex: 1; }
+    .pf-row { padding: 5px 14px 0; }
+    .pf-row.active { background: rgba(255,255,255,0.08); }
+    .pf-row-content {
+      display: flex; align-items: baseline;
+      font-size: 12px; font-variant-numeric: tabular-nums;
+    }
+    .pf-time { width: 68px; color: var(--ink-dim); flex-shrink: 0; }
+    .pf-wind { flex: 1; color: var(--ink); }
+    .pf-temp { color: var(--ink-dim); font-size: 11px; }
+    .pf-row.active .pf-time,
+    .pf-row.active .pf-wind,
+    .pf-row.active .pf-temp { color: var(--ink); }
+    .pf-bar-track { height: 3px; margin-top: 3px; }
+    .pf-bar-fill { height: 3px; border-radius: 1px; }
   </style>
 </head>
 <body>
@@ -206,6 +250,17 @@
       <span class="edge">23:00</span>
       <button type="button" id="nowBtn">Now</button>
     </div>
+  </div>
+
+  <div id="pointForecast">
+    <div id="pfHeader">
+      <div id="pfTitleRow">
+        <span id="pfName"></span>
+        <button type="button" id="pfClose">&times;</button>
+      </div>
+      <div id="pfConditions"></div>
+    </div>
+    <div id="pfRows"></div>
   </div>
 
   <script>
@@ -613,6 +668,7 @@
           updateSliderPosition();
           updateScrubberReadout();
           respawnAllParticles();
+          syncPointForecastToHour();
         });
         container.appendChild(btn);
       }
@@ -635,6 +691,7 @@
       selectedHour = Math.min(167, selectedDay * 24 + parseInt(sliderEl.value, 10));
       updateScrubberReadout();
       respawnAllParticles();
+      syncPointForecastToHour();
     });
 
     nowBtn.addEventListener('click', () => {
@@ -645,6 +702,7 @@
       updateSliderPosition();
       updateScrubberReadout();
       respawnAllParticles();
+      syncPointForecastToHour();
     });
 
     // Initialise placeholder chips on page load
@@ -787,6 +845,139 @@
     document.addEventListener('mousedown', (e) => {
       if (!layersPanelEl.contains(e.target) && e.target !== layersBtnEl) {
         layersPanelEl.style.display = 'none';
+      }
+    });
+
+    // ---------------------------------------------------------------
+    // POINT FORECAST
+    // ---------------------------------------------------------------
+    let pointForecast = null;
+    let pointForecastLocation = null;
+    let pointForecastName = null;
+
+    const pfEl = document.getElementById('pointForecast');
+    const pfNameEl = document.getElementById('pfName');
+    const pfConditionsEl = document.getElementById('pfConditions');
+    const pfRowsEl = document.getElementById('pfRows');
+    const pfCloseEl = document.getElementById('pfClose');
+
+    function precipBarColor(prob) {
+      if (prob <= 20) return null;
+      if (prob <= 50) return 'rgba(100, 160, 255, 0.5)';
+      if (prob <= 80) return 'rgba(60, 120, 255, 0.7)';
+      return 'rgba(30, 80, 255, 0.9)';
+    }
+
+    function formatPFTime(iso) {
+      const d = new Date(iso);
+      const hh = String(d.getHours()).padStart(2, '0');
+      return `${WEEKDAYS[d.getDay()]} ${hh}:00`;
+    }
+
+    function buildConditionsLine(h, idx) {
+      const spd = Math.round(h.wind_speed_10m[idx]);
+      const dir = cardinal(h.wind_direction_10m[idx]);
+      const gust = Math.round(h.wind_gusts_10m[idx]);
+      const temp = Math.round(h.apparent_temperature[idx]);
+      const rain = Math.round(h.precipitation_probability[idx] || 0);
+      return `${spd} km/h ${dir} · gusts ${gust} km/h · ${temp}°C · ${rain}% rain`;
+    }
+
+    function renderPointForecastPanel() {
+      if (!pointForecast) return;
+      const h = pointForecast.hourly;
+      pfNameEl.textContent = pointForecastName;
+      pfConditionsEl.textContent = buildConditionsLine(h, selectedHour);
+      pfRowsEl.innerHTML = '';
+      for (let i = 0; i < h.time.length; i++) {
+        const row = document.createElement('div');
+        row.className = 'pf-row' + (i === selectedHour ? ' active' : '');
+        row.dataset.idx = i;
+
+        const content = document.createElement('div');
+        content.className = 'pf-row-content';
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'pf-time';
+        timeSpan.textContent = formatPFTime(h.time[i]);
+
+        const windSpan = document.createElement('span');
+        windSpan.className = 'pf-wind';
+        windSpan.textContent = `${Math.round(h.wind_speed_10m[i])} km/h ${cardinal(h.wind_direction_10m[i])}`;
+
+        const tempSpan = document.createElement('span');
+        tempSpan.className = 'pf-temp';
+        tempSpan.textContent = `${Math.round(h.apparent_temperature[i])}°C`;
+
+        content.appendChild(timeSpan);
+        content.appendChild(windSpan);
+        content.appendChild(tempSpan);
+        row.appendChild(content);
+
+        const barTrack = document.createElement('div');
+        barTrack.className = 'pf-bar-track';
+        const prob = h.precipitation_probability[i] || 0;
+        const color = precipBarColor(prob);
+        if (color) {
+          const barFill = document.createElement('div');
+          barFill.className = 'pf-bar-fill';
+          barFill.style.cssText = `width:${prob}%;background:${color}`;
+          barTrack.appendChild(barFill);
+        }
+        row.appendChild(barTrack);
+        pfRowsEl.appendChild(row);
+      }
+
+      pfEl.style.display = 'flex';
+      requestAnimationFrame(() => {
+        const active = pfRowsEl.querySelector('.pf-row.active');
+        if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+
+    function syncPointForecastToHour() {
+      if (!pointForecast || pfEl.style.display === 'none') return;
+      const h = pointForecast.hourly;
+      pfConditionsEl.textContent = buildConditionsLine(h, selectedHour);
+      const prev = pfRowsEl.querySelector('.pf-row.active');
+      if (prev) prev.classList.remove('active');
+      const next = pfRowsEl.querySelector(`.pf-row[data-idx="${selectedHour}"]`);
+      if (next) {
+        next.classList.add('active');
+        next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    pfCloseEl.addEventListener('click', () => {
+      pfEl.style.display = 'none';
+      pointForecast = null;
+    });
+
+    map.on('click', async (e) => {
+      const { lng, lat } = e.lngLat;
+      const features = map.queryRenderedFeatures(e.point);
+      const named = features.find(f => f.properties && typeof f.properties.name === 'string' && f.properties.name.trim());
+      pointForecastName = named
+        ? named.properties.name
+        : `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} · ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;
+      pointForecastLocation = e.lngLat;
+
+      pfNameEl.textContent = pointForecastName;
+      pfConditionsEl.textContent = 'Fetching forecast…';
+      pfRowsEl.innerHTML = '';
+      pfEl.style.display = 'flex';
+
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
+          `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability,precipitation,apparent_temperature` +
+          `&wind_speed_unit=kmh&forecast_days=7&timezone=auto`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        pointForecast = await res.json();
+        renderPointForecastPanel();
+      } catch (err) {
+        console.error('Point forecast fetch failed:', err);
+        pfConditionsEl.textContent = 'Failed to load forecast.';
       }
     });
   </script>
