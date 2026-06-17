@@ -178,16 +178,16 @@
 
     #pointForecast {
       position: fixed; left: 10px; bottom: 220px; z-index: 15;
-      width: 300px; max-height: 60vh;
+      width: 380px;
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--hair); border-radius: 8px;
       font-family: var(--ui); color: var(--ink);
-      display: none; flex-direction: column; overflow: hidden;
+      display: none; flex-direction: column;
     }
     @media (max-width: 600px) {
       #pointForecast {
-        left: 0; right: 0; bottom: 0; width: 100%; max-height: 50vh;
+        left: 0; right: 0; bottom: 0; width: 100%;
         border-radius: 8px 8px 0 0;
       }
     }
@@ -204,21 +204,8 @@
     }
     #pfClose:hover { color: var(--ink); }
     #pfConditions { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-    #pfRows { overflow-y: auto; flex: 1; }
-    .pf-row { padding: 5px 14px 0; }
-    .pf-row.active { background: rgba(255,255,255,0.08); }
-    .pf-row-content {
-      display: flex; align-items: baseline;
-      font-size: 12px; font-variant-numeric: tabular-nums;
-    }
-    .pf-time { width: 68px; color: var(--ink-dim); flex-shrink: 0; }
-    .pf-wind { flex: 1; color: var(--ink); }
-    .pf-temp { color: var(--ink-dim); font-size: 11px; }
-    .pf-row.active .pf-time,
-    .pf-row.active .pf-wind,
-    .pf-row.active .pf-temp { color: var(--ink); }
-    .pf-bar-track { height: 3px; margin-top: 3px; }
-    .pf-bar-fill { height: 3px; border-radius: 1px; }
+    #pfDays { display: flex; justify-content: space-evenly; align-items: center; padding: 12px 8px; }
+    #pfDetail { padding: 8px 14px 14px; border-top: 1px solid var(--hair); }
   </style>
 </head>
 <body>
@@ -269,7 +256,8 @@
       </div>
       <div id="pfConditions"></div>
     </div>
-    <div id="pfRows"></div>
+    <div id="pfDays"></div>
+    <div id="pfDetail"></div>
   </div>
 
   <script>
@@ -641,7 +629,7 @@
       const d = new Date(iso);
       const hh = String(d.getHours()).padStart(2, '0');
       const mm = String(d.getMinutes()).padStart(2, '0');
-      return `${WEEKDAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()} · ${hh}:${mm}`;
+      return WEEKDAYS[d.getDay()] + ' ' + MONTHS[d.getMonth()] + ' ' + d.getDate() + ' · ' + hh + ':' + mm;
     }
 
     const sliderEl = document.getElementById('hourSlider');
@@ -691,7 +679,7 @@
         const speed = centre.speed[selectedHour];
         const gust = centre.gust[selectedHour];
         const dir = centre.dir[selectedHour];
-        scrubberWindEl.innerHTML = `<b>${Math.round(speed)} km/h</b> ${cardinal(dir)} &nbsp;&middot;&nbsp; gusts <b>${Math.round(gust)} km/h</b>`;
+        scrubberWindEl.innerHTML = '<b>' + Math.round(speed) + ' km/h</b> ' + cardinal(dir) + ' &nbsp;&middot;&nbsp; gusts <b>' + Math.round(gust) + ' km/h</b>';
       }
       updateSliderPosition();
     }
@@ -744,8 +732,8 @@
       showWindLoading();
       try {
         const responses = await Promise.all(gridPoints.map((p) => {
-          const url = `${WIND_API}?latitude=${p.lat}&longitude=${p.lng}` +
-            `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&forecast_days=7&timezone=auto`;
+          const url = WIND_API + '?latitude=' + p.lat + '&longitude=' + p.lng +
+            '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
           return fetch(url).then((r) => r.ok ? r.json() : null).catch(() => null);
         }));
 
@@ -767,7 +755,7 @@
 
         const validCount = points.filter(p => p != null).length;
         if (validCount < 4) {
-          console.warn(`Wind fetch: only ${validCount} valid points, keeping stale data`);
+          console.warn('Wind fetch: only ' + validCount + ' valid points, keeping stale data');
           return;
         }
 
@@ -880,25 +868,13 @@
     let pointForecast = null;
     let pointForecastLocation = null;
     let pointForecastName = null;
+    let selectedDayCell = 0;
+    let dayData = null;
 
     const pfEl = document.getElementById('pointForecast');
     const pfNameEl = document.getElementById('pfName');
     const pfConditionsEl = document.getElementById('pfConditions');
-    const pfRowsEl = document.getElementById('pfRows');
     const pfCloseEl = document.getElementById('pfClose');
-
-    function precipBarColor(prob) {
-      if (prob <= 20) return null;
-      if (prob <= 50) return 'rgba(100, 160, 255, 0.5)';
-      if (prob <= 80) return 'rgba(60, 120, 255, 0.7)';
-      return 'rgba(30, 80, 255, 0.9)';
-    }
-
-    function formatPFTime(iso) {
-      const d = new Date(iso);
-      const hh = String(d.getHours()).padStart(2, '0');
-      return `${WEEKDAYS[d.getDay()]} ${hh}:00`;
-    }
 
     function buildConditionsLine(h, idx) {
       const spd = Math.round(h.wind_speed_10m[idx]);
@@ -906,77 +882,134 @@
       const gust = Math.round(h.wind_gusts_10m[idx]);
       const temp = Math.round(h.apparent_temperature[idx]);
       const rain = Math.round(h.precipitation_probability[idx] || 0);
-      return `${spd} km/h ${dir} · gusts ${gust} km/h · ${temp}°C · ${rain}% rain`;
+      return spd + ' km/h ' + dir + ' · gusts ' + gust + ' km/h · ' + temp + '°C · ' + rain + '% rain';
+    }
+
+    function buildDayData(pf) {
+      const h = pf.hourly;
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        let sumU = 0, sumV = 0, sumSpeed = 0;
+        let maxGust = 0, minSpeed = Infinity, maxSpeed = 0, maxRainProb = 0;
+        for (let k = 0; k < 24; k++) {
+          const idx = i * 24 + k;
+          const spd = h.wind_speed_10m[idx] || 0;
+          const dir = h.wind_direction_10m[idx] || 0;
+          const gust = h.wind_gusts_10m[idx] || 0;
+          const rain = h.precipitation_probability[idx] || 0;
+          const rad = ((dir + 180) % 360) * Math.PI / 180;
+          sumU += spd * Math.sin(rad);
+          sumV += spd * Math.cos(rad);
+          sumSpeed += spd;
+          if (gust > maxGust) maxGust = gust;
+          if (spd < minSpeed) minSpeed = spd;
+          if (spd > maxSpeed) maxSpeed = spd;
+          if (rain > maxRainProb) maxRainProb = rain;
+        }
+        const avgU = sumU / 24, avgV = sumV / 24;
+        let dominantDir = Math.atan2(avgU, avgV) * 180 / Math.PI;
+        if (dominantDir < 0) dominantDir += 360;
+        const d = new Date(h.time[i * 24]);
+        days.push({
+          avgU, avgV, dominantDir,
+          avgSpeed: sumSpeed / 24,
+          maxGust, maxRainProb,
+          minSpeed: minSpeed === Infinity ? 0 : minSpeed,
+          maxSpeed,
+          label: WEEKDAYS[d.getDay()],
+          date: d
+        });
+      }
+      return days;
+    }
+
+    function buildDayCellSVG(day, selected) {
+      const R = 20;
+      const circ = 2 * Math.PI * R;
+      const dash = (day.maxRainProb / 100) * circ;
+      const ll = Math.min(18, Math.max(8, 8 + 10 * (day.avgSpeed / 40)));
+      const sw = Math.min(3.5, Math.max(1.5, 1.5 + 2 * (day.maxGust / 60)));
+      const angle = day.dominantDir * Math.PI / 180;
+      const sinA = Math.sin(angle), cosA = Math.cos(angle);
+      const x2 = 26 + sinA * ll,         y2 = 26 - cosA * ll;
+      const x1 = 26 - sinA * (ll * 0.4), y1 = 26 + cosA * (ll * 0.4);
+      const ah = 3;
+      const b1x = x2 - sinA * ah + cosA * (ah * 0.7), b1y = y2 + cosA * ah + sinA * (ah * 0.7);
+      const b2x = x2 - sinA * ah - cosA * (ah * 0.7), b2y = y2 + cosA * ah - sinA * (ah * 0.7);
+      const ring = selected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.10)';
+      const f = v => v.toFixed(2);
+      let s = '<svg width="52" height="52" viewBox="0 0 52 52" style="display:block;margin:auto">';
+      s += '<circle cx="26" cy="26" r="23" fill="rgba(255,255,255,0.03)" stroke="' + ring + '" stroke-width="1"/>';
+      if (day.maxRainProb >= 10) {
+        s += '<circle cx="26" cy="26" r="' + R + '" fill="none" stroke="rgba(100,160,255,0.55)" stroke-width="3" ' +
+             'stroke-dasharray="' + f(dash) + ' ' + f(circ) + '" stroke-dashoffset="0" ' +
+             'stroke-linecap="round" transform="rotate(-90 26 26)"/>';
+      }
+      s += '<line x1="' + f(x1) + '" y1="' + f(y1) + '" x2="' + f(x2) + '" y2="' + f(y2) + '" ' +
+           'stroke="#ddeeff" stroke-width="' + f(sw) + '" stroke-linecap="round"/>';
+      s += '<polygon points="' + f(x2) + ',' + f(y2) + ' ' + f(b1x) + ',' + f(b1y) + ' ' + f(b2x) + ',' + f(b2y) + '" fill="#ddeeff"/>';
+      s += '</svg>';
+      return s;
+    }
+
+    function renderDayCells() {
+      const pfDaysEl = document.getElementById('pfDays');
+      if (!pfDaysEl || !dayData) return;
+      pfDaysEl.innerHTML = '';
+      dayData.forEach((day, i) => {
+        const cell = document.createElement('div');
+        cell.style.cursor = 'pointer';
+        cell.innerHTML = buildDayCellSVG(day, i === selectedDayCell);
+        const lbl = document.createElement('div');
+        lbl.style.cssText = 'font-size:10px;text-align:center;margin-top:4px;color:' +
+          (i === selectedDayCell ? 'var(--ink)' : 'var(--ink-dim)');
+        lbl.textContent = day.label;
+        cell.appendChild(lbl);
+        cell.addEventListener('click', () => {
+          selectedDayCell = i;
+          renderDayCells();
+          renderDetailDiv(dayData[i]);
+        });
+        pfDaysEl.appendChild(cell);
+      });
+    }
+
+    function renderDetailDiv(day) {
+      const pfDetailEl = document.getElementById('pfDetail');
+      if (!pfDetailEl) return;
+      const weekdays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const fullDate = weekdays[day.date.getDay()] + ', ' + MONTHS[day.date.getMonth()] + ' ' + day.date.getDate();
+      const windLine = Math.round(day.minSpeed) + '–' + Math.round(day.maxSpeed) + ' km/h · ' +
+                       'gusts ' + Math.round(day.maxGust) + ' km/h · ' + cardinal(day.dominantDir);
+      const rainLine = day.maxRainProb >= 10
+        ? '<div style="font-size:11px;color:rgba(100,160,255,0.9)">🌧 ' + Math.round(day.maxRainProb) + '% chance of rain</div>'
+        : '<div style="font-size:11px;color:var(--ink-dim)">No significant rain</div>';
+      pfDetailEl.innerHTML =
+        '<div style="font-size:12px;color:var(--ink);font-weight:500;margin-bottom:2px">' + fullDate + '</div>' +
+        '<div style="font-size:12px;color:var(--ink-dim);margin-bottom:3px">' + windLine + '</div>' +
+        rainLine;
     }
 
     function renderPointForecastPanel() {
       if (!pointForecast) return;
-      const h = pointForecast.hourly;
       pfNameEl.textContent = pointForecastName;
-      pfConditionsEl.textContent = buildConditionsLine(h, selectedHour);
-      pfRowsEl.innerHTML = '';
-      for (let i = 0; i < h.time.length; i++) {
-        const row = document.createElement('div');
-        row.className = 'pf-row' + (i === selectedHour ? ' active' : '');
-        row.dataset.idx = i;
-
-        const content = document.createElement('div');
-        content.className = 'pf-row-content';
-
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'pf-time';
-        timeSpan.textContent = formatPFTime(h.time[i]);
-
-        const windSpan = document.createElement('span');
-        windSpan.className = 'pf-wind';
-        windSpan.textContent = `${Math.round(h.wind_speed_10m[i])} km/h ${cardinal(h.wind_direction_10m[i])}`;
-
-        const tempSpan = document.createElement('span');
-        tempSpan.className = 'pf-temp';
-        tempSpan.textContent = `${Math.round(h.apparent_temperature[i])}°C`;
-
-        content.appendChild(timeSpan);
-        content.appendChild(windSpan);
-        content.appendChild(tempSpan);
-        row.appendChild(content);
-
-        const barTrack = document.createElement('div');
-        barTrack.className = 'pf-bar-track';
-        const prob = h.precipitation_probability[i] || 0;
-        const color = precipBarColor(prob);
-        if (color) {
-          const barFill = document.createElement('div');
-          barFill.className = 'pf-bar-fill';
-          barFill.style.cssText = `width:${prob}%;background:${color}`;
-          barTrack.appendChild(barFill);
-        }
-        row.appendChild(barTrack);
-        pfRowsEl.appendChild(row);
-      }
-
+      pfConditionsEl.textContent = buildConditionsLine(pointForecast.hourly, selectedHour);
+      dayData = buildDayData(pointForecast);
+      selectedDayCell = Math.floor(selectedHour / 24);
+      renderDayCells();
+      renderDetailDiv(dayData[selectedDayCell]);
       pfEl.style.display = 'flex';
-      requestAnimationFrame(() => {
-        const active = pfRowsEl.querySelector('.pf-row.active');
-        if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
     }
 
     function syncPointForecastToHour() {
       if (!pointForecast || pfEl.style.display === 'none') return;
-      const h = pointForecast.hourly;
-      pfConditionsEl.textContent = buildConditionsLine(h, selectedHour);
-      const prev = pfRowsEl.querySelector('.pf-row.active');
-      if (prev) prev.classList.remove('active');
-      const next = pfRowsEl.querySelector(`.pf-row[data-idx="${selectedHour}"]`);
-      if (next) {
-        next.classList.add('active');
-        next.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      pfConditionsEl.textContent = buildConditionsLine(pointForecast.hourly, selectedHour);
     }
 
     pfCloseEl.addEventListener('click', () => {
       pfEl.style.display = 'none';
       pointForecast = null;
+      dayData = null;
     });
 
     map.on('click', async (e) => {
@@ -985,18 +1018,17 @@
       const named = features.find(f => f.properties && typeof f.properties.name === 'string' && f.properties.name.trim());
       pointForecastName = named
         ? named.properties.name
-        : `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} · ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;
+        : Math.abs(lat).toFixed(2) + '°' + (lat >= 0 ? 'N' : 'S') + ' · ' + Math.abs(lng).toFixed(2) + '°' + (lng >= 0 ? 'E' : 'W');
       pointForecastLocation = e.lngLat;
 
       pfNameEl.textContent = pointForecastName;
       pfConditionsEl.textContent = 'Fetching forecast…';
-      pfRowsEl.innerHTML = '';
       pfEl.style.display = 'flex';
 
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
-          `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability,precipitation,apparent_temperature` +
-          `&wind_speed_unit=kmh&forecast_days=7&timezone=auto`;
+        const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng +
+          '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability,precipitation,apparent_temperature' +
+          '&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
         const res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         pointForecast = await res.json();
