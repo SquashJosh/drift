@@ -312,18 +312,20 @@
       attribution: "Elevation: <a href='https://registry.opendata.aws/terrain-tiles/'>AWS Terrain Tiles</a> (Mapzen / 3DEP / others)"
     };
 
-    function buildColorReliefExpr(min, max) {
+    function buildColorReliefExpr(min, max, alpha) {
+      if (alpha === undefined) alpha = 0.55;
       let lo = min, hi = max;
       if (hi - lo < 1e-6) hi = lo + 1e-6; // guard against a flat viewport
       const n = RAMP_RGB.length;
       const expr = ['interpolate', ['linear'], ['elevation']];
       for (let i = 0; i < n; i++) {
         const val = lo + (hi - lo) * (i / (n - 1));
-        expr.push(val, `rgba(${RAMP_RGB[i]}, 0.55)`);
+        expr.push(val, `rgba(${RAMP_RGB[i]}, ${alpha})`);
       }
       return expr;
     }
 
+    let currentElevMin = 0, currentElevMax = 1000;
     const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
@@ -340,6 +342,7 @@
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     function updateColorRelief(min, max) {
+      currentElevMin = min; currentElevMax = max;
       const expr = buildColorReliefExpr(min, max);
       try {
         map.setPaintProperty(elevationLayerId, 'color-relief-color', expr);
@@ -457,7 +460,7 @@
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    let windGrid = null;     // { lats:[3], lngs:[3], points:[9] row-major lat-major/lng-minor }
+    let windGrid = null;     // { lats:[5], lngs:[5], points:[25] row-major lat-major/lng-minor }
     let forecastTimes = [];  // 168 ISO time strings
     let selectedHour = 0;
     let selectedDay = 0;
@@ -480,6 +483,9 @@
     document.getElementById('map').appendChild(precipCanvas);
     const precipCtx = precipCanvas.getContext('2d');
 
+    const offCanvas = document.createElement('canvas');
+    const offCtx = offCanvas.getContext('2d');
+
     function resizeWindCanvas() {
       const rect = map.getContainer().getBoundingClientRect();
       windCanvas.width = rect.width;
@@ -489,10 +495,12 @@
       const rect = map.getContainer().getBoundingClientRect();
       precipCanvas.width = rect.width;
       precipCanvas.height = rect.height;
+      offCanvas.width  = Math.ceil(rect.width  / 8);
+      offCanvas.height = Math.ceil(rect.height / 8);
     }
     resizeWindCanvas();
     resizePrecipCanvas();
-    window.addEventListener('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); respawnAllParticles(); respawnAllRainMarks(); });
+    window.addEventListener('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); respawnAllParticles(); });
     map.on('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); });
 
     function bilerp(a, b, c, d, fx, fy) {
@@ -500,11 +508,12 @@
     }
 
     function nearestValidPoint(points, row, col) {
-      if (points[row * 3 + col]) return points[row * 3 + col];
+      const sz = Math.round(Math.sqrt(points.length));
+      if (points[row * sz + col]) return points[row * sz + col];
       let best = null, bestDist = Infinity;
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) {
-          const p = points[r * 3 + c];
+      for (let r = 0; r < sz; r++) {
+        for (let c = 0; c < sz; c++) {
+          const p = points[r * sz + c];
           if (!p) continue;
           const d = Math.abs(r - row) + Math.abs(c - col);
           if (d < bestDist) { bestDist = d; best = p; }
@@ -516,12 +525,13 @@
     function interpolateWind(lng, lat, hourIdx) {
       if (!windGrid) return null;
       const { lats, lngs, points } = windGrid;
+      const N = lats.length - 1;
       const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
-      const tx = clamp01((lng - lngs[0]) / (lngs[2] - lngs[0])) * 2;
-      const ty = clamp01((lat - lats[0]) / (lats[2] - lats[0])) * 2;
-      const ix = Math.min(1, Math.floor(tx));
-      const iy = Math.min(1, Math.floor(ty));
+      const tx = clamp01((lng - lngs[0]) / (lngs[N] - lngs[0])) * N;
+      const ty = clamp01((lat - lats[0]) / (lats[N] - lats[0])) * N;
+      const ix = Math.min(N - 1, Math.floor(tx));
+      const iy = Math.min(N - 1, Math.floor(ty));
       const fx = tx - ix;
       const fy = ty - iy;
 
@@ -537,7 +547,7 @@
       };
     }
 
-    // Inverse-distance weighting across the 9 screen-projected grid points.
+    // Inverse-distance weighting across all screen-projected grid points.
     function interpolateScreenWind(x, y, sg) {
       let wU = 0, wV = 0, wSum = 0;
       for (const pt of sg) {
@@ -549,18 +559,6 @@
         wSum += w;
       }
       return wSum > 0 ? { U: wU / wSum, V: wV / wSum } : null;
-    }
-
-    function interpolateScreenPrecip(x, y, sg) {
-      let wP = 0, wSum = 0;
-      for (const pt of sg) {
-        const dx = x - pt.sx, dy = y - pt.sy;
-        const d2 = dx * dx + dy * dy;
-        const w = d2 < 1 ? 1e6 : 1 / d2;
-        wP += pt.precip * w;
-        wSum += w;
-      }
-      return wSum > 0 ? wP / wSum : 0;
     }
 
     function spawnParticle(p) {
@@ -599,35 +597,7 @@
       particles.push(p);
     }
 
-    const RAIN_COUNT = 500;
-    let rainMarks = [];
-
-    function spawnRainMark(m) {
-      m.x = Math.random() * precipCanvas.width;
-      m.y = -(Math.random() * 20);         // enter just above the top edge
-      m.age = 0;
-      m.maxAge = 400;                      // safety ceiling; normal exit is falling off bottom
-      m.fallSpeed = 2.5 + Math.random() * 1.5;
-      if (currentScreenGrid) {
-        const prob = interpolateScreenPrecip(m.x, m.y, currentScreenGrid);
-        m.active = Math.random() * 100 <= prob;
-      } else {
-        m.active = false;
-      }
-    }
-
-    function respawnAllRainMarks() {
-      for (const m of rainMarks) spawnRainMark(m);
-    }
-
-    for (let i = 0; i < RAIN_COUNT; i++) {
-      rainMarks.push({
-        x: Math.random() * (precipCanvas.width  || window.innerWidth),
-        y: Math.random() * (precipCanvas.height || window.innerHeight),
-        age: 0, maxAge: 400, active: false,
-        fallSpeed: 2.5 + Math.random() * 1.5
-      });
-    }
+    let precipDriftX = 0, precipDriftY = 0;
 
     function particleOpacity(age, maxAge) {
       const fadeIn = 10, fadeOut = 8;
@@ -689,37 +659,47 @@
         windCtx.globalAlpha = 1;
       }
 
-      // Rain marks — vertical falling stipple, independent of wind
-      if (precipLayer.visible) {
-        precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
-        for (const m of rainMarks) {
-          m.y += m.fallSpeed;
-          m.age++;
-
-          if (m.y > precipCanvas.height + 20 || m.age >= m.maxAge) {
-            spawnRainMark(m); continue;
-          }
-          if (!m.active) continue;
-
-          const prob = interpolateScreenPrecip(m.x, m.y, currentScreenGrid);
-          if (prob < 10) continue;
-
-          const t = (prob - 10) / 90;          // 0 at 10 %, 1 at 100 %
-          const A = t * 0.6;
-
-          const r = Math.round(150 - 60 * t);
-          const g = Math.round(190 - 50 * t);
-
-          precipCtx.globalAlpha = A;
-          precipCtx.strokeStyle = 'rgb(' + r + ',' + g + ',255)';
-          precipCtx.lineWidth = 1;
-          precipCtx.lineCap = 'butt';
-          precipCtx.beginPath();
-          precipCtx.moveTo(m.x, m.y);
-          precipCtx.lineTo(m.x, m.y + 2.5);
-          precipCtx.stroke();
+      // Precip field — drifting probability glow
+      if (precipLayer.visible && currentScreenGrid.length > 0) {
+        let sumU = 0, sumV = 0;
+        for (const pt of currentScreenGrid) { sumU += pt.U; sumV += pt.V; }
+        const cnt = currentScreenGrid.length;
+        const meanU = sumU / cnt, meanV = sumV / cnt;
+        const meanSpd = Math.sqrt(meanU * meanU + meanV * meanV);
+        if (meanSpd > 0.001) {
+          precipDriftX += (meanU / meanSpd) * 0.15;
+          precipDriftY += (meanV / meanSpd) * 0.15;
         }
-        precipCtx.globalAlpha = 1;
+        const ow = offCanvas.width, oh = offCanvas.height;
+        if (precipDriftX >  ow) precipDriftX -= ow;
+        if (precipDriftX < -ow) precipDriftX += ow;
+        if (precipDriftY >  oh) precipDriftY -= oh;
+        if (precipDriftY < -oh) precipDriftY += oh;
+
+        const scale = 1 / 8;
+        const blobR = ow * 0.4;
+
+        offCtx.clearRect(0, 0, ow, oh);
+        offCtx.globalCompositeOperation = 'lighter';
+        for (const pt of currentScreenGrid) {
+          if (pt.precip < 1) continue;
+          const bx = pt.sx * scale + precipDriftX;
+          const by = pt.sy * scale + precipDriftY;
+          const alpha = (pt.precip / 100) * 0.7;
+          const grad = offCtx.createRadialGradient(bx, by, 0, bx, by, blobR);
+          grad.addColorStop(0, 'rgba(80,140,255,' + alpha.toFixed(3) + ')');
+          grad.addColorStop(1, 'rgba(80,140,255,0)');
+          offCtx.fillStyle = grad;
+          offCtx.beginPath();
+          offCtx.arc(bx, by, blobR, 0, Math.PI * 2);
+          offCtx.fill();
+        }
+        offCtx.globalCompositeOperation = 'source-over';
+
+        precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
+        precipCtx.imageSmoothingEnabled = true;
+        precipCtx.imageSmoothingQuality = 'high';
+        precipCtx.drawImage(offCanvas, 0, 0, precipCanvas.width, precipCanvas.height);
       }
     }
     requestAnimationFrame(animate);
@@ -729,11 +709,12 @@
       lastSampledBounds = null;
       windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
       precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
+      precipDriftX = 0; precipDriftY = 0;
     });
     map.on('moveend', () => {
       pauseAnimation = false;
       respawnAllParticles();
-      respawnAllRainMarks();
+      precipDriftX = 0; precipDriftY = 0;
     });
 
     function nearestHourIndex() {
@@ -800,7 +781,8 @@
     function updateScrubberReadout() {
       if (forecastTimes[selectedHour]) scrubberTimeEl.textContent = formatDateTime(forecastTimes[selectedHour]);
       if (windGrid) {
-        const centre = windGrid.points[4] || windGrid.points.find(p => p != null);
+        const midIdx = Math.floor(windGrid.points.length / 2);
+        const centre = windGrid.points[midIdx] || windGrid.points.find(p => p != null);
         if (!centre) return;
         const speed = centre.speed[selectedHour];
         const gust = centre.gust[selectedHour];
@@ -850,10 +832,10 @@
 
       const bounds = map.getBounds();
       const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
-      const lats = [0, 1, 2].map((i) => sw.lat + (ne.lat - sw.lat) * (i / 2));
-      const lngs = [0, 1, 2].map((i) => sw.lng + (ne.lng - sw.lng) * (i / 2));
+      const lats = [0, 1, 2, 3, 4].map((i) => sw.lat + (ne.lat - sw.lat) * (i / 4));
+      const lngs = [0, 1, 2, 3, 4].map((i) => sw.lng + (ne.lng - sw.lng) * (i / 4));
       const gridPoints = [];
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) gridPoints.push({ lat: lats[i], lng: lngs[j] });
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) gridPoints.push({ lat: lats[i], lng: lngs[j] });
 
       showWindLoading();
       try {
@@ -880,7 +862,7 @@
         });
 
         const validCount = points.filter(p => p != null).length;
-        if (validCount < 4) {
+        if (validCount < 9) {
           console.warn('Wind fetch: only ' + validCount + ' valid points, keeping stale data');
           return;
         }
@@ -898,7 +880,6 @@
         updateSliderPosition();
         updateScrubberReadout();
         respawnAllParticles();
-        respawnAllRainMarks();
       } catch (err) {
         console.error('Wind fetch failed:', err);
       } finally {
@@ -934,6 +915,14 @@
         windCanvas.style.display = layer.visible ? '' : 'none';
       } else if (layer.id === 'precip') {
         precipCanvas.style.display = layer.visible ? '' : 'none';
+        precipDriftX = 0; precipDriftY = 0;
+        if (map.getLayer(elevationLayerId)) {
+          const alpha = layer.visible ? 0.14 : 0.55;
+          try {
+            map.setPaintProperty(elevationLayerId, 'color-relief-color',
+              buildColorReliefExpr(currentElevMin, currentElevMax, alpha));
+          } catch (e) {}
+        }
       }
     }
 
