@@ -599,14 +599,15 @@
       particles.push(p);
     }
 
-    const RAIN_COUNT = 600;
+    const RAIN_COUNT = 500;
     let rainMarks = [];
 
     function spawnRainMark(m) {
       m.x = Math.random() * precipCanvas.width;
-      m.y = Math.random() * precipCanvas.height;
+      m.y = -(Math.random() * 20);         // enter just above the top edge
       m.age = 0;
-      m.maxAge = 40 + Math.floor(Math.random() * 31);
+      m.maxAge = 400;                      // safety ceiling; normal exit is falling off bottom
+      m.fallSpeed = 2.5 + Math.random() * 1.5;
       if (currentScreenGrid) {
         const prob = interpolateScreenPrecip(m.x, m.y, currentScreenGrid);
         m.active = Math.random() * 100 <= prob;
@@ -623,7 +624,8 @@
       rainMarks.push({
         x: Math.random() * (precipCanvas.width  || window.innerWidth),
         y: Math.random() * (precipCanvas.height || window.innerHeight),
-        age: Math.floor(Math.random() * 60), maxAge: 50, active: false
+        age: 0, maxAge: 400, active: false,
+        fallSpeed: 2.5 + Math.random() * 1.5
       });
     }
 
@@ -687,51 +689,34 @@
         windCtx.globalAlpha = 1;
       }
 
-      // Rain marks
+      // Rain marks — vertical falling stipple, independent of wind
       if (precipLayer.visible) {
         precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
         for (const m of rainMarks) {
-          const wind = interpolateScreenWind(m.x, m.y, currentScreenGrid);
-          let moveX = 0, moveY = 0.4;
-          if (wind) { moveX += wind.U * 0.03; moveY += wind.V * 0.03; }
-          m.x += moveX;
-          m.y += moveY;
+          m.y += m.fallSpeed;
           m.age++;
 
-          const offScreen = m.x < -20 || m.x > precipCanvas.width  + 20 ||
-                            m.y < -20 || m.y > precipCanvas.height + 20;
-          if (m.age >= m.maxAge || offScreen) { spawnRainMark(m); continue; }
+          if (m.y > precipCanvas.height + 20 || m.age >= m.maxAge) {
+            spawnRainMark(m); continue;
+          }
           if (!m.active) continue;
 
           const prob = interpolateScreenPrecip(m.x, m.y, currentScreenGrid);
           if (prob < 10) continue;
 
-          const fadeIn = 8, fadeOut = 8;
-          let ageFade;
-          if      (m.age < fadeIn)              ageFade = m.age / fadeIn;
-          else if (m.age > m.maxAge - fadeOut)  ageFade = Math.max(0, (m.maxAge - m.age) / fadeOut);
-          else                                   ageFade = 1;
+          const t = (prob - 10) / 90;          // 0 at 10 %, 1 at 100 %
+          const A = t * 0.6;
 
-          const t = (prob - 10) / 90;                    // 0 at 10 %, 1 at 100 %
-          const A = t * 0.55 * ageFade;
-          if (A <= 0) continue;
-
-          // colour: lerp (150,190,255) → (90,140,255)
           const r = Math.round(150 - 60 * t);
           const g = Math.round(190 - 50 * t);
-          const len = 4 + 5 * t;                         // 4–9 px
-
-          const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
-          const dirX = moveMag > 0.001 ? moveX / moveMag : 0;
-          const dirY = moveMag > 0.001 ? moveY / moveMag : 1;
 
           precipCtx.globalAlpha = A;
           precipCtx.strokeStyle = 'rgb(' + r + ',' + g + ',255)';
           precipCtx.lineWidth = 1;
-          precipCtx.lineCap = 'round';
+          precipCtx.lineCap = 'butt';
           precipCtx.beginPath();
-          precipCtx.moveTo(m.x - dirX * len * 0.5, m.y - dirY * len * 0.5);
-          precipCtx.lineTo(m.x + dirX * len * 0.5, m.y + dirY * len * 0.5);
+          precipCtx.moveTo(m.x, m.y);
+          precipCtx.lineTo(m.x, m.y + 2.5);
           precipCtx.stroke();
         }
         precipCtx.globalAlpha = 1;
