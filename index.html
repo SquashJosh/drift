@@ -69,6 +69,10 @@
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none; z-index: 5;
     }
+    #precip-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 6;
+    }
 
     /* Layers button — inline in topbar */
     #layersBtn {
@@ -439,8 +443,11 @@
     // LAYERS
     // ---------------------------------------------------------------
     const LAYERS = [
-      { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
+      { id: 'wind',   label: 'Wind', colour: '#ffffff', visible: true  },
+      { id: 'precip', label: 'Rain', colour: '#5a8cff', visible: false },
     ];
+    const windLayer   = LAYERS[0];
+    const precipLayer = LAYERS[1];
 
     // ---------------------------------------------------------------
     // WIND: particle system + 7-day forecast scrubber
@@ -467,14 +474,26 @@
     document.getElementById('map').appendChild(windCanvas);
     const windCtx = windCanvas.getContext('2d');
 
+    const precipCanvas = document.createElement('canvas');
+    precipCanvas.id = 'precip-canvas';
+    precipCanvas.style.display = 'none';
+    document.getElementById('map').appendChild(precipCanvas);
+    const precipCtx = precipCanvas.getContext('2d');
+
     function resizeWindCanvas() {
       const rect = map.getContainer().getBoundingClientRect();
       windCanvas.width = rect.width;
       windCanvas.height = rect.height;
     }
+    function resizePrecipCanvas() {
+      const rect = map.getContainer().getBoundingClientRect();
+      precipCanvas.width = rect.width;
+      precipCanvas.height = rect.height;
+    }
     resizeWindCanvas();
-    window.addEventListener('resize', () => { resizeWindCanvas(); respawnAllParticles(); });
-    map.on('resize', resizeWindCanvas);
+    resizePrecipCanvas();
+    window.addEventListener('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); respawnAllParticles(); respawnAllRainMarks(); });
+    map.on('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); });
 
     function bilerp(a, b, c, d, fx, fy) {
       return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
@@ -532,6 +551,18 @@
       return wSum > 0 ? { U: wU / wSum, V: wV / wSum } : null;
     }
 
+    function interpolateScreenPrecip(x, y, sg) {
+      let wP = 0, wSum = 0;
+      for (const pt of sg) {
+        const dx = x - pt.sx, dy = y - pt.sy;
+        const d2 = dx * dx + dy * dy;
+        const w = d2 < 1 ? 1e6 : 1 / d2;
+        wP += pt.precip * w;
+        wSum += w;
+      }
+      return wSum > 0 ? wP / wSum : 0;
+    }
+
     function spawnParticle(p) {
       const sg = currentScreenGrid;
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -568,6 +599,34 @@
       particles.push(p);
     }
 
+    const RAIN_COUNT = 600;
+    let rainMarks = [];
+
+    function spawnRainMark(m) {
+      m.x = Math.random() * precipCanvas.width;
+      m.y = Math.random() * precipCanvas.height;
+      m.age = 0;
+      m.maxAge = 40 + Math.floor(Math.random() * 31);
+      if (currentScreenGrid) {
+        const prob = interpolateScreenPrecip(m.x, m.y, currentScreenGrid);
+        m.active = Math.random() * 100 <= prob;
+      } else {
+        m.active = false;
+      }
+    }
+
+    function respawnAllRainMarks() {
+      for (const m of rainMarks) spawnRainMark(m);
+    }
+
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      rainMarks.push({
+        x: Math.random() * (precipCanvas.width  || window.innerWidth),
+        y: Math.random() * (precipCanvas.height || window.innerHeight),
+        age: Math.floor(Math.random() * 60), maxAge: 50, active: false
+      });
+    }
+
     function particleOpacity(age, maxAge) {
       const fadeIn = 10, fadeOut = 8;
       if (age < fadeIn) return 0.85 * (age / fadeIn);
@@ -577,53 +636,106 @@
 
     function animate() {
       requestAnimationFrame(animate);
-      if (pauseAnimation || !windGrid || windCanvas.style.display === 'none') return;
+      if (pauseAnimation || !windGrid) return;
 
-      // 9 map.project() calls per frame instead of 300 map.unproject() calls
+      // 9 map.project() calls once per frame — reused by both wind and precip
       currentScreenGrid = windGrid.points
         .map(pt => {
           if (!pt) return null;
           const px = map.project([pt.lng, pt.lat]);
-          return { sx: px.x, sy: px.y, U: pt.U[selectedHour], V: pt.V[selectedHour] };
+          return { sx: px.x, sy: px.y, U: pt.U[selectedHour], V: pt.V[selectedHour],
+                   precip: pt.precip ? pt.precip[selectedHour] : 0 };
         })
         .filter(Boolean);
 
-      // Fade existing trails
-      windCtx.globalCompositeOperation = 'destination-out';
-      windCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-      windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
-      windCtx.globalCompositeOperation = 'source-over';
+      // Wind particles
+      if (windLayer.visible) {
+        windCtx.globalCompositeOperation = 'destination-out';
+        windCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
+        windCtx.globalCompositeOperation = 'source-over';
 
-      windCtx.fillStyle = '#ddeeff';
-      for (const p of particles) {
-        const wind = interpolateScreenWind(p.x, p.y, currentScreenGrid);
+        windCtx.fillStyle = '#ddeeff';
+        for (const p of particles) {
+          const wind = interpolateScreenWind(p.x, p.y, currentScreenGrid);
 
-        if (wind) {
-          const spd = Math.sqrt(wind.U * wind.U + wind.V * wind.V);
-          if (spd >= 0.001) {
-            const speedPx = spd * 0.06;
-            p.x += (wind.U / spd) * speedPx;
-            p.y += (wind.V / spd) * speedPx;
+          if (wind) {
+            const spd = Math.sqrt(wind.U * wind.U + wind.V * wind.V);
+            if (spd >= 0.001) {
+              const speedPx = spd * 0.06;
+              p.x += (wind.U / spd) * speedPx;
+              p.y += (wind.V / spd) * speedPx;
+            }
+            p.speed = spd || 0;
           }
-          p.speed = spd || 0;
-        }
 
-        const opacity = particleOpacity(p.age, p.maxAge);
-        if (opacity > 0) {
-          windCtx.globalAlpha = opacity;
-          windCtx.beginPath();
-          windCtx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
-          windCtx.fill();
-        }
+          const opacity = particleOpacity(p.age, p.maxAge);
+          if (opacity > 0) {
+            windCtx.globalAlpha = opacity;
+            windCtx.beginPath();
+            windCtx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
+            windCtx.fill();
+          }
 
-        p.age++;
-        if (p.age >= p.maxAge ||
-            p.x < -10 || p.x > windCanvas.width + 10 ||
-            p.y < -10 || p.y > windCanvas.height + 10) {
-          spawnParticle(p);
+          p.age++;
+          if (p.age >= p.maxAge ||
+              p.x < -10 || p.x > windCanvas.width + 10 ||
+              p.y < -10 || p.y > windCanvas.height + 10) {
+            spawnParticle(p);
+          }
         }
+        windCtx.globalAlpha = 1;
       }
-      windCtx.globalAlpha = 1;
+
+      // Rain marks
+      if (precipLayer.visible) {
+        precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
+        for (const m of rainMarks) {
+          const wind = interpolateScreenWind(m.x, m.y, currentScreenGrid);
+          let moveX = 0, moveY = 0.4;
+          if (wind) { moveX += wind.U * 0.03; moveY += wind.V * 0.03; }
+          m.x += moveX;
+          m.y += moveY;
+          m.age++;
+
+          const offScreen = m.x < -20 || m.x > precipCanvas.width  + 20 ||
+                            m.y < -20 || m.y > precipCanvas.height + 20;
+          if (m.age >= m.maxAge || offScreen) { spawnRainMark(m); continue; }
+          if (!m.active) continue;
+
+          const prob = interpolateScreenPrecip(m.x, m.y, currentScreenGrid);
+          if (prob < 10) continue;
+
+          const fadeIn = 8, fadeOut = 8;
+          let ageFade;
+          if      (m.age < fadeIn)              ageFade = m.age / fadeIn;
+          else if (m.age > m.maxAge - fadeOut)  ageFade = Math.max(0, (m.maxAge - m.age) / fadeOut);
+          else                                   ageFade = 1;
+
+          const t = (prob - 10) / 90;                    // 0 at 10 %, 1 at 100 %
+          const A = t * 0.55 * ageFade;
+          if (A <= 0) continue;
+
+          // colour: lerp (150,190,255) → (90,140,255)
+          const r = Math.round(150 - 60 * t);
+          const g = Math.round(190 - 50 * t);
+          const len = 4 + 5 * t;                         // 4–9 px
+
+          const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
+          const dirX = moveMag > 0.001 ? moveX / moveMag : 0;
+          const dirY = moveMag > 0.001 ? moveY / moveMag : 1;
+
+          precipCtx.globalAlpha = A;
+          precipCtx.strokeStyle = 'rgb(' + r + ',' + g + ',255)';
+          precipCtx.lineWidth = 1;
+          precipCtx.lineCap = 'round';
+          precipCtx.beginPath();
+          precipCtx.moveTo(m.x - dirX * len * 0.5, m.y - dirY * len * 0.5);
+          precipCtx.lineTo(m.x + dirX * len * 0.5, m.y + dirY * len * 0.5);
+          precipCtx.stroke();
+        }
+        precipCtx.globalAlpha = 1;
+      }
     }
     requestAnimationFrame(animate);
 
@@ -631,10 +743,12 @@
       pauseAnimation = true;
       lastSampledBounds = null;
       windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
+      precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
     });
     map.on('moveend', () => {
       pauseAnimation = false;
       respawnAllParticles();
+      respawnAllRainMarks();
     });
 
     function nearestHourIndex() {
@@ -760,7 +874,7 @@
       try {
         const responses = await Promise.all(gridPoints.map((p) => {
           const url = WIND_API + '?latitude=' + p.lat + '&longitude=' + p.lng +
-            '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
+            '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
           return fetch(url).then((r) => r.ok ? r.json() : null).catch(() => null);
         }));
 
@@ -777,7 +891,7 @@
             U[k] = h.wind_speed_10m[k] * Math.sin(rad);
             V[k] = h.wind_speed_10m[k] * Math.cos(rad);
           }
-          return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m };
+          return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m, precip: h.precipitation_probability };
         });
 
         const validCount = points.filter(p => p != null).length;
@@ -799,6 +913,7 @@
         updateSliderPosition();
         updateScrubberReadout();
         respawnAllParticles();
+        respawnAllRainMarks();
       } catch (err) {
         console.error('Wind fetch failed:', err);
       } finally {
@@ -832,6 +947,8 @@
     function applyLayerVisibility(layer) {
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
+      } else if (layer.id === 'precip') {
+        precipCanvas.style.display = layer.visible ? '' : 'none';
       }
     }
 
