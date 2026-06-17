@@ -264,7 +264,7 @@
     <div class="row top">
       <div class="time" id="scrubberTime">&mdash;</div>
       <div class="wind" id="scrubberWind">&mdash;</div>
-      <button type="button" id="scrubberToggle">&#8743;</button>
+      <button type="button" id="scrubberToggle">&times;</button>
     </div>
     <div class="row middle" id="dayChips"></div>
     <div class="row bottom">
@@ -817,7 +817,7 @@
 
     scrubberToggleEl.addEventListener('click', () => {
       scrubberCollapsed = !scrubberCollapsed;
-      scrubberToggleEl.textContent = scrubberCollapsed ? '∨' : '∧';
+      scrubberToggleEl.textContent = '×';
       dayChipsRowEl.style.display = scrubberCollapsed ? 'none' : '';
       sliderRowEl.style.display = scrubberCollapsed ? 'none' : '';
       scrubberEl.classList.toggle('collapsed', scrubberCollapsed);
