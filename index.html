@@ -823,7 +823,7 @@
 
     scrubberToggleEl.addEventListener('click', () => {
       scrubberCollapsed = !scrubberCollapsed;
-      scrubberToggleEl.textContent = '×';
+      scrubberToggleEl.textContent = scrubberCollapsed ? '+' : '×';
       dayChipsRowEl.style.display = scrubberCollapsed ? 'none' : '';
       sliderRowEl.style.display = scrubberCollapsed ? 'none' : '';
       scrubberEl.classList.toggle('collapsed', scrubberCollapsed);
