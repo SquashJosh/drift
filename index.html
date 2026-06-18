@@ -456,6 +456,7 @@
         }
       } catch (err) {
         console.error('Cycling layer failed to add:', err);
+        throw err;
       }
 
       map.once('idle', () => {
