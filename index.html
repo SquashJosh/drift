@@ -64,6 +64,8 @@
     .maplibregl-ctrl-top-right { margin-top: 56px; }
     .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
     .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
+    .maplibregl-ctrl-attrib:not(.maplibregl-compact-show) .maplibregl-ctrl-attrib-inner { display: none; }
+    .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button { display: block; }
 
     #wind-canvas {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -335,7 +337,7 @@
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '' }), 'bottom-right');
 
     function updateColorRelief(min, max) {
       const expr = buildColorReliefExpr(min, max);
