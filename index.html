@@ -330,10 +330,12 @@
       zoom: 11,
       pitch: 0,
       maxPitch: 0,
-      antialias: true
+      antialias: true,
+      attributionControl: false
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
     function updateColorRelief(min, max) {
       const expr = buildColorReliefExpr(min, max);
@@ -414,36 +416,43 @@
         paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
       }, beforeLayerId);
 
-      map.addLayer({
-        id: 'cycling-infra-layer',
-        type: 'line',
-        source: 'openmaptiles',
-        'source-layer': 'transportation',
-        filter: ['any',
-          ['==', ['get', 'subclass'], 'cycleway'],
-          ['all',
-            ['==', ['get', 'class'], 'path'],
-            ['==', ['get', 'subclass'], 'cycleway']
-          ],
-          ['==', ['get', 'class'], 'track']
-        ],
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-          'visibility': 'none'
-        },
-        paint: {
-          'line-width': ['interpolate', ['linear'], ['zoom'],
-            10, 1.5,
-            14, 3
-          ],
-          'line-color': ['match', ['get', 'subclass'],
-            'cycleway', '#4caf50',
-            '#5a9fd4'
-          ],
-          'line-opacity': 0.9
+      // Cycling infrastructure from existing vector tiles.
+      // Wrapped so a failure here can't abort the rest of style.load.
+      try {
+        const sources = map.getStyle().sources;
+        const vectorSourceName = Object.keys(sources).find(
+          name => sources[name].type === 'vector'
+        );
+        if (vectorSourceName) {
+          map.addLayer({
+            id: 'cycling-infra-layer',
+            type: 'line',
+            source: vectorSourceName,
+            'source-layer': 'transportation',
+            filter: ['any',
+              ['==', ['get', 'subclass'], 'cycleway'],
+              ['==', ['get', 'class'], 'track']
+            ],
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+              'visibility': 'none'
+            },
+            paint: {
+              'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3],
+              'line-color': ['match', ['get', 'subclass'],
+                'cycleway', '#4caf50',
+                '#5a9fd4'
+              ],
+              'line-opacity': 0.9
+            }
+          }, beforeLayerId);
+        } else {
+          console.warn('Cycling layer: no vector source found in style');
         }
-      }, beforeLayerId);
+      } catch (err) {
+        console.error('Cycling layer failed to add:', err);
+      }
 
       map.once('idle', () => {
         lastSampledBounds = null;
