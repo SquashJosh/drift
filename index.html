@@ -312,7 +312,7 @@
       let lo = min, hi = max;
       if (hi - lo < 1e-6) hi = lo + 1e-6; // guard against a flat viewport
       const n = RAMP_RGB.length;
-      const expr = ['interpolate', ['linear'], ['elevation']];
+      const expr = ['interpolate', ['linear'], ['coalesce', ['elevation'], lo]];
       for (let i = 0; i < n; i++) {
         const val = lo + (hi - lo) * (i / (n - 1));
         expr.push(val, `rgba(${RAMP_RGB[i]}, 0.55)`);
