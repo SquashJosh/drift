@@ -434,12 +434,9 @@
           map.addLayer({
             id: 'cycling-infra-layer',
             type: 'line',
-            source: vectorSourceName,
+            source: 'openmaptiles',
             'source-layer': 'transportation',
-            filter: ['any',
-              ['==', ['get', 'subclass'], 'cycleway'],
-              ['==', ['get', 'class'], 'track']
-            ],
+            filter: ['match', ['get', 'class'], ['path', 'track'], true, false],
             layout: {
               'line-join': 'round',
               'line-cap': 'round',
@@ -447,9 +444,9 @@
             },
             paint: {
               'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3],
-              'line-color': ['match', ['get', 'subclass'],
-                'cycleway', '#4caf50',
-                '#5a9fd4'
+              'line-color': ['match', ['get', 'class'],
+                'track', '#f5c842',
+                '#4caf50'
               ],
               'line-opacity': 0.9
             }
@@ -940,8 +937,8 @@
         divider.style.cssText = 'border-top: 1px solid var(--hair); margin: 8px 0 6px;';
         layersPanelEl.appendChild(divider);
         [
-          { colour: '#4caf50', label: 'Dedicated cycleway' },
-          { colour: '#5a9fd4', label: 'Track / path' },
+          { colour: '#4caf50', label: 'Path / cycleway' },
+          { colour: '#f5c842', label: 'Track' },
         ].forEach(({ colour, label }) => {
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:2px 0;';
