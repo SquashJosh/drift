@@ -434,6 +434,7 @@
           map.addLayer({
             id: 'cycling-infra-layer',
             type: 'line',
+            minzoom: 13,
             source: 'openmaptiles',
             'source-layer': 'transportation',
             filter: ['match', ['coalesce', ['get', 'class'], ''], ['path', 'track'], true, false],
