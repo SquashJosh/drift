@@ -69,10 +69,6 @@
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none; z-index: 5;
     }
-    #precip-canvas {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      pointer-events: none; z-index: 6;
-    }
 
     /* Layers button — inline in topbar */
     #layersBtn {
@@ -312,20 +308,18 @@
       attribution: "Elevation: <a href='https://registry.opendata.aws/terrain-tiles/'>AWS Terrain Tiles</a> (Mapzen / 3DEP / others)"
     };
 
-    function buildColorReliefExpr(min, max, alpha) {
-      if (alpha === undefined) alpha = 0.55;
+    function buildColorReliefExpr(min, max) {
       let lo = min, hi = max;
       if (hi - lo < 1e-6) hi = lo + 1e-6; // guard against a flat viewport
       const n = RAMP_RGB.length;
       const expr = ['interpolate', ['linear'], ['elevation']];
       for (let i = 0; i < n; i++) {
         const val = lo + (hi - lo) * (i / (n - 1));
-        expr.push(val, `rgba(${RAMP_RGB[i]}, ${alpha})`);
+        expr.push(val, `rgba(${RAMP_RGB[i]}, 0.55)`);
       }
       return expr;
     }
 
-    let currentElevMin = 0, currentElevMax = 1000;
     const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
@@ -342,7 +336,6 @@
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     function updateColorRelief(min, max) {
-      currentElevMin = min; currentElevMax = max;
       const expr = buildColorReliefExpr(min, max);
       try {
         map.setPaintProperty(elevationLayerId, 'color-relief-color', expr);
@@ -446,11 +439,10 @@
     // LAYERS
     // ---------------------------------------------------------------
     const LAYERS = [
-      { id: 'wind',   label: 'Wind', colour: '#ffffff', visible: true  },
-      { id: 'precip', label: 'Rain', colour: '#5a8cff', visible: false },
+      { id: 'elevation', label: 'Elevation', colour: '#f5c842', visible: true },
+      { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
     ];
-    const windLayer   = LAYERS[0];
-    const precipLayer = LAYERS[1];
+    const windLayer = LAYERS[1];
 
     // ---------------------------------------------------------------
     // WIND: particle system + 7-day forecast scrubber
@@ -460,7 +452,7 @@
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    let windGrid = null;     // { lats:[5], lngs:[5], points:[25] row-major lat-major/lng-minor }
+    let windGrid = null;     // { lats:[3], lngs:[3], points:[9] row-major lat-major/lng-minor }
     let forecastTimes = [];  // 168 ISO time strings
     let selectedHour = 0;
     let selectedDay = 0;
@@ -477,43 +469,25 @@
     document.getElementById('map').appendChild(windCanvas);
     const windCtx = windCanvas.getContext('2d');
 
-    const precipCanvas = document.createElement('canvas');
-    precipCanvas.id = 'precip-canvas';
-    precipCanvas.style.display = 'none';
-    document.getElementById('map').appendChild(precipCanvas);
-    const precipCtx = precipCanvas.getContext('2d');
-
-    const offCanvas = document.createElement('canvas');
-    const offCtx = offCanvas.getContext('2d');
-
     function resizeWindCanvas() {
       const rect = map.getContainer().getBoundingClientRect();
       windCanvas.width = rect.width;
       windCanvas.height = rect.height;
     }
-    function resizePrecipCanvas() {
-      const rect = map.getContainer().getBoundingClientRect();
-      precipCanvas.width = rect.width;
-      precipCanvas.height = rect.height;
-      offCanvas.width  = Math.ceil(rect.width  / 8);
-      offCanvas.height = Math.ceil(rect.height / 8);
-    }
     resizeWindCanvas();
-    resizePrecipCanvas();
-    window.addEventListener('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); respawnAllParticles(); });
-    map.on('resize', () => { resizeWindCanvas(); resizePrecipCanvas(); });
+    window.addEventListener('resize', () => { resizeWindCanvas(); respawnAllParticles(); });
+    map.on('resize', resizeWindCanvas);
 
     function bilerp(a, b, c, d, fx, fy) {
       return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
     }
 
     function nearestValidPoint(points, row, col) {
-      const sz = Math.round(Math.sqrt(points.length));
-      if (points[row * sz + col]) return points[row * sz + col];
+      if (points[row * 3 + col]) return points[row * 3 + col];
       let best = null, bestDist = Infinity;
-      for (let r = 0; r < sz; r++) {
-        for (let c = 0; c < sz; c++) {
-          const p = points[r * sz + c];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const p = points[r * 3 + c];
           if (!p) continue;
           const d = Math.abs(r - row) + Math.abs(c - col);
           if (d < bestDist) { bestDist = d; best = p; }
@@ -525,13 +499,12 @@
     function interpolateWind(lng, lat, hourIdx) {
       if (!windGrid) return null;
       const { lats, lngs, points } = windGrid;
-      const N = lats.length - 1;
       const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
-      const tx = clamp01((lng - lngs[0]) / (lngs[N] - lngs[0])) * N;
-      const ty = clamp01((lat - lats[0]) / (lats[N] - lats[0])) * N;
-      const ix = Math.min(N - 1, Math.floor(tx));
-      const iy = Math.min(N - 1, Math.floor(ty));
+      const tx = clamp01((lng - lngs[0]) / (lngs[2] - lngs[0])) * 2;
+      const ty = clamp01((lat - lats[0]) / (lats[2] - lats[0])) * 2;
+      const ix = Math.min(1, Math.floor(tx));
+      const iy = Math.min(1, Math.floor(ty));
       const fx = tx - ix;
       const fy = ty - iy;
 
@@ -547,7 +520,7 @@
       };
     }
 
-    // Inverse-distance weighting across all screen-projected grid points.
+    // Inverse-distance weighting across the 9 screen-projected grid points.
     function interpolateScreenWind(x, y, sg) {
       let wU = 0, wV = 0, wSum = 0;
       for (const pt of sg) {
@@ -597,8 +570,6 @@
       particles.push(p);
     }
 
-    let precipDriftX = 0, precipDriftY = 0;
-
     function particleOpacity(age, maxAge) {
       const fadeIn = 10, fadeOut = 8;
       if (age < fadeIn) return 0.85 * (age / fadeIn);
@@ -610,13 +581,12 @@
       requestAnimationFrame(animate);
       if (pauseAnimation || !windGrid) return;
 
-      // 9 map.project() calls once per frame — reused by both wind and precip
+      // 9 map.project() calls per frame instead of 300 map.unproject() calls
       currentScreenGrid = windGrid.points
         .map(pt => {
           if (!pt) return null;
           const px = map.project([pt.lng, pt.lat]);
-          return { sx: px.x, sy: px.y, U: pt.U[selectedHour], V: pt.V[selectedHour],
-                   precip: pt.precip ? pt.precip[selectedHour] : 0 };
+          return { sx: px.x, sy: px.y, U: pt.U[selectedHour], V: pt.V[selectedHour] };
         })
         .filter(Boolean);
 
@@ -658,49 +628,6 @@
         }
         windCtx.globalAlpha = 1;
       }
-
-      // Precip field — drifting probability glow
-      if (precipLayer.visible && currentScreenGrid.length > 0) {
-        let sumU = 0, sumV = 0;
-        for (const pt of currentScreenGrid) { sumU += pt.U; sumV += pt.V; }
-        const cnt = currentScreenGrid.length;
-        const meanU = sumU / cnt, meanV = sumV / cnt;
-        const meanSpd = Math.sqrt(meanU * meanU + meanV * meanV);
-        if (meanSpd > 0.001) {
-          precipDriftX += (meanU / meanSpd) * 0.15;
-          precipDriftY += (meanV / meanSpd) * 0.15;
-        }
-        const ow = offCanvas.width, oh = offCanvas.height;
-        if (precipDriftX >  ow) precipDriftX -= ow;
-        if (precipDriftX < -ow) precipDriftX += ow;
-        if (precipDriftY >  oh) precipDriftY -= oh;
-        if (precipDriftY < -oh) precipDriftY += oh;
-
-        const scale = 1 / 8;
-        const blobR = ow * 0.4;
-
-        offCtx.clearRect(0, 0, ow, oh);
-        offCtx.globalCompositeOperation = 'lighter';
-        for (const pt of currentScreenGrid) {
-          if (pt.precip < 1) continue;
-          const bx = pt.sx * scale + precipDriftX;
-          const by = pt.sy * scale + precipDriftY;
-          const alpha = (pt.precip / 100) * 0.7;
-          const grad = offCtx.createRadialGradient(bx, by, 0, bx, by, blobR);
-          grad.addColorStop(0, 'rgba(80,140,255,' + alpha.toFixed(3) + ')');
-          grad.addColorStop(1, 'rgba(80,140,255,0)');
-          offCtx.fillStyle = grad;
-          offCtx.beginPath();
-          offCtx.arc(bx, by, blobR, 0, Math.PI * 2);
-          offCtx.fill();
-        }
-        offCtx.globalCompositeOperation = 'source-over';
-
-        precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
-        precipCtx.imageSmoothingEnabled = true;
-        precipCtx.imageSmoothingQuality = 'high';
-        precipCtx.drawImage(offCanvas, 0, 0, precipCanvas.width, precipCanvas.height);
-      }
     }
     requestAnimationFrame(animate);
 
@@ -708,13 +635,10 @@
       pauseAnimation = true;
       lastSampledBounds = null;
       windCtx.clearRect(0, 0, windCanvas.width, windCanvas.height);
-      precipCtx.clearRect(0, 0, precipCanvas.width, precipCanvas.height);
-      precipDriftX = 0; precipDriftY = 0;
     });
     map.on('moveend', () => {
       pauseAnimation = false;
       respawnAllParticles();
-      precipDriftX = 0; precipDriftY = 0;
     });
 
     function nearestHourIndex() {
@@ -781,8 +705,7 @@
     function updateScrubberReadout() {
       if (forecastTimes[selectedHour]) scrubberTimeEl.textContent = formatDateTime(forecastTimes[selectedHour]);
       if (windGrid) {
-        const midIdx = Math.floor(windGrid.points.length / 2);
-        const centre = windGrid.points[midIdx] || windGrid.points.find(p => p != null);
+        const centre = windGrid.points[4] || windGrid.points.find(p => p != null);
         if (!centre) return;
         const speed = centre.speed[selectedHour];
         const gust = centre.gust[selectedHour];
@@ -832,16 +755,16 @@
 
       const bounds = map.getBounds();
       const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
-      const lats = [0, 1, 2, 3, 4].map((i) => sw.lat + (ne.lat - sw.lat) * (i / 4));
-      const lngs = [0, 1, 2, 3, 4].map((i) => sw.lng + (ne.lng - sw.lng) * (i / 4));
+      const lats = [0, 1, 2].map((i) => sw.lat + (ne.lat - sw.lat) * (i / 2));
+      const lngs = [0, 1, 2].map((i) => sw.lng + (ne.lng - sw.lng) * (i / 2));
       const gridPoints = [];
-      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) gridPoints.push({ lat: lats[i], lng: lngs[j] });
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) gridPoints.push({ lat: lats[i], lng: lngs[j] });
 
       showWindLoading();
       try {
         const responses = await Promise.all(gridPoints.map((p) => {
           const url = WIND_API + '?latitude=' + p.lat + '&longitude=' + p.lng +
-            '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
+            '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
           return fetch(url).then((r) => r.ok ? r.json() : null).catch(() => null);
         }));
 
@@ -858,11 +781,11 @@
             U[k] = h.wind_speed_10m[k] * Math.sin(rad);
             V[k] = h.wind_speed_10m[k] * Math.cos(rad);
           }
-          return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m, precip: h.precipitation_probability };
+          return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m };
         });
 
         const validCount = points.filter(p => p != null).length;
-        if (validCount < 9) {
+        if (validCount < 4) {
           console.warn('Wind fetch: only ' + validCount + ' valid points, keeping stale data');
           return;
         }
@@ -913,16 +836,10 @@
     function applyLayerVisibility(layer) {
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
-      } else if (layer.id === 'precip') {
-        precipCanvas.style.display = layer.visible ? '' : 'none';
-        precipDriftX = 0; precipDriftY = 0;
-        if (map.getLayer(elevationLayerId)) {
-          const alpha = layer.visible ? 0.14 : 0.55;
-          try {
-            map.setPaintProperty(elevationLayerId, 'color-relief-color',
-              buildColorReliefExpr(currentElevMin, currentElevMax, alpha));
-          } catch (e) {}
-        }
+      } else if (layer.id === 'elevation') {
+        const vis = layer.visible ? 'visible' : 'none';
+        if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
+        document.getElementById('legend').style.display = layer.visible ? '' : 'none';
       }
     }
 
