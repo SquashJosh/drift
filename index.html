@@ -436,7 +436,7 @@
             type: 'line',
             source: 'openmaptiles',
             'source-layer': 'transportation',
-            filter: ['match', ['get', 'class'], ['path', 'track'], true, false],
+            filter: ['match', ['coalesce', ['get', 'class'], ''], ['path', 'track'], true, false],
             layout: {
               'line-join': 'round',
               'line-cap': 'round',
@@ -456,7 +456,6 @@
         }
       } catch (err) {
         console.error('Cycling layer failed to add:', err);
-        throw err;
       }
 
       map.once('idle', () => {
