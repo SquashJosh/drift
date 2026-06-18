@@ -414,6 +414,37 @@
         paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
       }, beforeLayerId);
 
+      map.addLayer({
+        id: 'cycling-infra-layer',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'transportation',
+        filter: ['any',
+          ['==', ['get', 'subclass'], 'cycleway'],
+          ['all',
+            ['==', ['get', 'class'], 'path'],
+            ['==', ['get', 'subclass'], 'cycleway']
+          ],
+          ['==', ['get', 'class'], 'track']
+        ],
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+          'visibility': 'none'
+        },
+        paint: {
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            10, 1.5,
+            14, 3
+          ],
+          'line-color': ['match', ['get', 'subclass'],
+            'cycleway', '#4caf50',
+            '#5a9fd4'
+          ],
+          'line-opacity': 0.9
+        }
+      }, beforeLayerId);
+
       map.once('idle', () => {
         lastSampledBounds = null;
         sampleAndRecolor();
@@ -835,73 +866,6 @@
     const layersBtnEl = document.getElementById('layersBtn');
     const layersPanelEl = document.getElementById('layersPanel');
 
-    let cyclingLoaded = false;
-
-    async function loadCyclingInfrastructure() {
-      if (cyclingLoaded) return;
-      const query = `[out:json][timeout:30][bbox:44.9,-76.4,45.6,-75.3];
-(
-  way[highway=cycleway];
-  way[highway=path][bicycle=designated];
-  way[highway=footway][bicycle=designated];
-  way[cycleway=lane];
-  way[cycleway=track];
-  way["cycleway:both"=lane];
-  way["cycleway:both"=track];
-  way["cycleway:right"=lane];
-  way["cycleway:left"=lane];
-);
-out geom;`;
-      try {
-        const res = await fetch('https://overpass.kumi.systems/api/interpreter', {
-          method: 'POST',
-          body: 'data=' + encodeURIComponent(query)
-        });
-        if (!res.ok) throw new Error('Overpass HTTP ' + res.status);
-        const data = await res.json();
-
-        const features = data.elements
-          .filter(el => el.type === 'way' && el.geometry)
-          .map(el => {
-            const tags = el.tags || {};
-            let type = 'lane';
-            if (tags.highway === 'cycleway' || tags.cycleway === 'track' || tags['cycleway:both'] === 'track') type = 'track';
-            else if (tags.highway === 'path' || tags.highway === 'footway') type = 'path';
-            return {
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates: el.geometry.map(p => [p.lon, p.lat]) },
-              properties: { infraType: type }
-            };
-          });
-
-        map.addSource('cycling-infra', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features }
-        });
-
-        map.addLayer({
-          id: 'cycling-infra-layer',
-          type: 'line',
-          source: 'cycling-infra',
-          layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'none' },
-          paint: {
-            'line-width': 2.5,
-            'line-color': ['match', ['get', 'infraType'],
-              'track', '#4caf50',
-              'path',  '#5a9fd4',
-              'lane',  '#f5c842',
-              '#aaaaaa'
-            ],
-            'line-opacity': 0.85
-          }
-        });
-
-        cyclingLoaded = true;
-      } catch (err) {
-        console.error('Cycling fetch failed:', err);
-      }
-    }
-
     function applyLayerVisibility(layer) {
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
@@ -910,16 +874,8 @@ out geom;`;
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
         document.getElementById('legend').style.display = layer.visible ? '' : 'none';
       } else if (layer.id === 'cycling') {
-        if (!cyclingLoaded) {
-          loadCyclingInfrastructure().then(() => {
-            if (map.getLayer('cycling-infra-layer')) {
-              map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
-            }
-          });
-        } else {
-          if (map.getLayer('cycling-infra-layer')) {
-            map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
-          }
+        if (map.getLayer('cycling-infra-layer')) {
+          map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
         }
       }
     }
@@ -958,6 +914,38 @@ out geom;`;
         row.appendChild(dot);
         row.appendChild(label);
         row.appendChild(switchWrap);
+        layersPanelEl.appendChild(row);
+      });
+
+      // Cycling colour key — only when cycling layer is on
+      const cyclingEntry = LAYERS.find(l => l.id === 'cycling');
+      if (cyclingEntry && cyclingEntry.visible) {
+        const divider = document.createElement('div');
+        divider.style.cssText = 'border-top: 1px solid var(--hair); margin: 8px 0 6px;';
+        layersPanelEl.appendChild(divider);
+        [
+          { colour: '#4caf50', label: 'Dedicated cycleway' },
+          { colour: '#5a9fd4', label: 'Track / path' },
+        ].forEach(({ colour, label }) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:2px 0;';
+          row.innerHTML = '<div style="width:20px;height:3px;border-radius:2px;background:' + colour + ';flex-shrink:0"></div>' +
+            '<span style="font-size:11px;color:var(--ink-dim)">' + label + '</span>';
+          layersPanelEl.appendChild(row);
+        });
+      }
+
+      // How to use
+      const divider2 = document.createElement('div');
+      divider2.style.cssText = 'border-top: 1px solid var(--hair); margin: 8px 0 6px;';
+      layersPanelEl.appendChild(divider2);
+      [
+        'Click map for point forecast',
+        'Hover map for elevation',
+      ].forEach(hint => {
+        const row = document.createElement('div');
+        row.style.cssText = 'font-size:11px;color:var(--ink-dim);padding:2px 0;';
+        row.textContent = hint;
         layersPanelEl.appendChild(row);
       });
     }
