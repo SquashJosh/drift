@@ -825,8 +825,8 @@
           const U = new Float32Array(n), V = new Float32Array(n);
           for (let k = 0; k < n; k++) {
             const rad = (h.wind_direction_10m[k] * Math.PI) / 180;
-            U[k] = h.wind_speed_10m[k] * Math.sin(rad);
-            V[k] = h.wind_speed_10m[k] * Math.cos(rad);
+            U[k] = -h.wind_speed_10m[k] * Math.sin(rad);
+            V[k] = -h.wind_speed_10m[k] * Math.cos(rad);
           }
           return { lat: p.lat, lng: p.lng, U, V, speed: h.wind_speed_10m, gust: h.wind_gusts_10m, dir: h.wind_direction_10m };
         });
