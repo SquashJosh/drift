@@ -458,7 +458,7 @@
       { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
       { id: 'cycling', label: 'Cycling', colour: '#4caf50', visible: false },
     ];
-    let windParticleColor = '#ddeeff';
+    let windParticleColor = '#1a6699';
     const windLayer = LAYERS[1];
     const cyclingLayer = LAYERS[2];
 
@@ -859,7 +859,6 @@
         const vis = layer.visible ? 'visible' : 'none';
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
         document.getElementById('legend').style.display = layer.visible ? '' : 'none';
-        windParticleColor = layer.visible ? '#ddeeff' : '#1a6699';
       } else if (layer.id === 'cycling') {
         if (!cyclingLoaded) {
           map.addSource('cycling-pmtiles', {
