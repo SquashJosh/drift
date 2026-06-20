@@ -739,11 +739,12 @@
     scrubberTimeEl.addEventListener('click', () => {
       const currentHour = selectedHour % 24;
       const input = document.createElement('input');
-      input.type = 'number';
-      input.min = 0;
-      input.max = 23;
-      input.value = currentHour;
-      input.style.cssText = 'width:48px;background:transparent;border:none;border-bottom:1px solid var(--ink-dim);color:var(--ink);font-family:var(--ui);font-size:14px;font-weight:500;outline:none;text-align:center;';
+      input.type = 'text';
+      input.inputMode = 'numeric';
+      input.pattern = '[0-9]*';
+      input.maxLength = 2;
+      input.value = String(currentHour).padStart(2, '0');
+      input.style.cssText = 'width:28px;background:transparent;border:none;border-bottom:1px solid rgba(243,241,234,0.4);color:var(--ink);font-family:var(--ui);font-size:14px;font-weight:500;letter-spacing:0.02em;outline:none;text-align:center;padding:0;';
       scrubberTimeEl.textContent = '';
       scrubberTimeEl.appendChild(input);
       input.focus();
