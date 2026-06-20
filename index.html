@@ -263,7 +263,7 @@
   <div id="scrubber">
     <div id="windLoading">Loading wind data&hellip;</div>
     <div class="row top">
-      <div class="time" id="scrubberTime">&mdash;</div>
+      <div class="time" id="scrubberTime" style="cursor:pointer" title="Click to set time">&mdash;</div>
       <div class="wind" id="scrubberWind">&mdash;</div>
       <button type="button" id="scrubberToggle">&times;</button>
     </div>
@@ -708,7 +708,11 @@
         }
         btn.addEventListener('click', () => {
           selectedDay = i;
-          selectedHour = Math.min(167, i * 24 + (selectedHour % 24));
+          if (i === 0) {
+            selectedHour = Math.min(167, i * 24 + (selectedHour % 24));
+          } else {
+            selectedHour = Math.min(167, i * 24 + 8);
+          }
           renderDayChips();
           updateSliderPosition();
           updateScrubberReadout();
@@ -731,6 +735,38 @@
       }
       updateSliderPosition();
     }
+
+    scrubberTimeEl.addEventListener('click', () => {
+      const currentHour = selectedHour % 24;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = 0;
+      input.max = 23;
+      input.value = currentHour;
+      input.style.cssText = 'width:48px;background:transparent;border:none;border-bottom:1px solid var(--ink-dim);color:var(--ink);font-family:var(--ui);font-size:14px;font-weight:500;outline:none;text-align:center;';
+      scrubberTimeEl.textContent = '';
+      scrubberTimeEl.appendChild(input);
+      input.focus();
+      input.select();
+
+      function commit() {
+        let val = parseInt(input.value, 10);
+        if (isNaN(val)) val = currentHour;
+        val = Math.max(0, Math.min(23, val));
+        selectedHour = selectedDay * 24 + val;
+        renderDayChips();
+        updateSliderPosition();
+        updateScrubberReadout();
+        respawnAllParticles();
+        syncPointForecastToHour();
+      }
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { commit(); input.blur(); }
+        if (e.key === 'Escape') { updateScrubberReadout(); }
+      });
+      input.addEventListener('blur', commit);
+    });
 
     sliderEl.addEventListener('input', () => {
       selectedHour = Math.min(167, selectedDay * 24 + parseInt(sliderEl.value, 10));
