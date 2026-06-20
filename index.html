@@ -914,6 +914,7 @@
         checkbox.addEventListener('change', () => {
           layer.visible = checkbox.checked;
           applyLayerVisibility(layer);
+          if (layer.id === 'cycling') renderLayersPanel();
         });
 
         const track = document.createElement('span');
@@ -974,7 +975,7 @@
     });
 
     document.addEventListener('mousedown', (e) => {
-      if (!layersPanelEl.contains(e.target) && e.target !== layersBtnEl) {
+      if (!layersPanelEl.contains(e.target) && !layersBtnEl.contains(e.target)) {
         layersPanelEl.style.display = 'none';
       }
     });
