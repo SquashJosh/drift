@@ -842,12 +842,14 @@
       scrubberTimeEl.appendChild(wrapper);
       hourSel.focus();
 
-      document.addEventListener('mousedown', function closePicker(e) {
-        if (!wrapper.contains(e.target) && e.target !== scrubberTimeEl) {
-          updateScrubberReadout();
-          document.removeEventListener('mousedown', closePicker);
-        }
-      });
+      setTimeout(() => {
+        document.addEventListener('mousedown', function closePicker(e) {
+          if (!wrapper.contains(e.target)) {
+            updateScrubberReadout();
+            document.removeEventListener('mousedown', closePicker);
+          }
+        });
+      }, 0);
     });
 
     sliderEl.addEventListener('input', () => {
