@@ -41,7 +41,7 @@
     #readout b { color: var(--ink); font-weight: 600; }
 
     #legend {
-      position: absolute; left: 10px; top: 56px; z-index: 10;
+      position: absolute; left: 10px; top: 56px; z-index: 10; /* JS overrides top */
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--hair); border-radius: 4px;
@@ -63,7 +63,7 @@
     }
 
     #cyclingLegend {
-      position: absolute; left: 10px; top: 210px; z-index: 10;
+      position: absolute; left: 10px; top: 56px; z-index: 10; /* JS overrides top */
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--hair); border-radius: 4px;
@@ -459,6 +459,7 @@
         lastSampledBounds = null;
         sampleAndRecolor();
         fetchWindData();
+        stackLeftPanels();
       });
 
       map.on('moveend', scheduleRecolor);
@@ -968,6 +969,24 @@
     const layersBtnEl = document.getElementById('layersBtn');
     const layersPanelEl = document.getElementById('layersPanel');
 
+    function stackLeftPanels() {
+      const STACK_TOP = 56;
+      const GAP = 8;
+      const panels = [
+        document.getElementById('legend'),
+        document.getElementById('cyclingLegend'),
+      ];
+      let currentTop = STACK_TOP;
+      panels.forEach(panel => {
+        if (!panel) return;
+        const visible = panel.style.display !== 'none' && panel.style.display !== '';
+        if (visible) {
+          panel.style.top = currentTop + 'px';
+          currentTop += panel.getBoundingClientRect().height + GAP;
+        }
+      });
+    }
+
     function applyLayerVisibility(layer) {
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
@@ -977,6 +996,7 @@
         const vis = layer.visible ? 'visible' : 'none';
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
         document.getElementById('legend').style.display = layer.visible ? '' : 'none';
+        stackLeftPanels();
       } else if (layer.id === 'cycling') {
         if (!cyclingLoaded) {
           map.addSource('cycling-pmtiles', {
@@ -1009,6 +1029,7 @@
           map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
         }
         updateCyclingLegend(layer.visible);
+        stackLeftPanels();
       }
     }
 
@@ -1085,7 +1106,8 @@
     // POINT FORECAST
     // ---------------------------------------------------------------
     function positionPointForecast() {
-      const scrubberHeight = scrubberEl.getBoundingClientRect().height;
+      const scrubberVisible = scrubberEl.style.display !== 'none';
+      const scrubberHeight = scrubberVisible ? scrubberEl.getBoundingClientRect().height : 0;
       pfEl.style.bottom = (scrubberHeight + 8) + 'px';
     }
 
