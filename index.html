@@ -202,7 +202,7 @@
     #scrubber.collapsed { gap: 0; }
 
     #pointForecast {
-      position: fixed; left: 10px; bottom: 0; z-index: 15;
+      position: fixed; right: 10px; top: 110px; z-index: 15;
       width: 380px;
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -213,7 +213,7 @@
     @media (max-width: 600px) {
       #scrubber { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 6px 6px 0 0; }
       #pointForecast {
-        left: 0; right: 0; bottom: 0; width: 100%;
+        left: 0; right: 0; top: auto; bottom: 0; width: 100%;
         border-radius: 8px 8px 0 0;
       }
     }
@@ -962,7 +962,6 @@
       dayChipsRowEl.style.display = scrubberCollapsed ? 'none' : '';
       sliderRowEl.style.display = scrubberCollapsed ? 'none' : '';
       scrubberEl.classList.toggle('collapsed', scrubberCollapsed);
-      if (pfEl.style.display === 'flex') positionPointForecast();
     });
 
     // ---------------------------------------------------------------
@@ -974,15 +973,11 @@
     function stackLeftPanels() {
       const STACK_TOP = 56;
       const GAP = 8;
-      const panels = [
-        document.getElementById('legend'),
-        document.getElementById('cyclingLegend'),
-      ];
       let currentTop = STACK_TOP;
-      panels.forEach(panel => {
+      [document.getElementById('legend'), document.getElementById('cyclingLegend')].forEach(panel => {
         if (!panel) return;
-        const visible = panel.style.display !== 'none' && panel.style.display !== '';
-        if (visible) {
+        const isVisible = getComputedStyle(panel).display !== 'none';
+        if (isVisible) {
           panel.style.top = currentTop + 'px';
           currentTop += panel.getBoundingClientRect().height + GAP;
         }
@@ -993,11 +988,10 @@
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
         scrubberEl.style.display = layer.visible ? '' : 'none';
-        if (!layer.visible && pfEl.style.display === 'flex') positionPointForecast();
       } else if (layer.id === 'elevation') {
         const vis = layer.visible ? 'visible' : 'none';
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
-        document.getElementById('legend').style.display = layer.visible ? '' : 'none';
+        document.getElementById('legend').style.display = layer.visible ? 'flex' : 'none';
         stackLeftPanels();
       } else if (layer.id === 'cycling') {
         if (!cyclingLoaded) {
@@ -1107,13 +1101,6 @@
     // ---------------------------------------------------------------
     // POINT FORECAST
     // ---------------------------------------------------------------
-    function positionPointForecast() {
-      const scrubberVisible = scrubberEl.style.display !== 'none';
-      const scrubberHeight = scrubberVisible ? scrubberEl.getBoundingClientRect().height : 0;
-      pfEl.style.bottom = (scrubberHeight + 8) + 'px';
-    }
-
-    window.addEventListener('resize', () => { if (pfEl.style.display === 'flex') positionPointForecast(); });
 
     let pointForecast = null;
     let pointForecastLocation = null;
@@ -1282,7 +1269,6 @@
 
       pfNameEl.textContent = pointForecastName;
       pfConditionsEl.textContent = 'Fetching forecast…';
-      positionPointForecast();
       pfEl.style.display = 'flex';
 
       try {
