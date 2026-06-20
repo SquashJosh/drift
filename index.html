@@ -745,40 +745,34 @@
       const currentHour12 = currentHour24 % 12 || 12;
 
       const wrapper = document.createElement('span');
-      wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:4px;';
+      wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
 
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.inputMode = 'numeric';
-      input.pattern = '[0-9]*';
-      input.maxLength = 2;
-      input.value = String(currentHour12);
-      input.style.cssText = 'width:24px;background:transparent;border:none;border-bottom:1px solid rgba(243,241,234,0.4);color:var(--ink);font-family:var(--ui);font-size:14px;font-weight:500;outline:none;text-align:center;padding:0;';
+      const selectStyle = 'background:rgba(10,12,11,0.85);border:1px solid rgba(255,255,255,0.15);border-radius:4px;color:var(--ink);font-family:var(--ui);font-size:13px;font-weight:500;outline:none;cursor:pointer;padding:2px 4px;appearance:none;-webkit-appearance:none;text-align:center;';
 
-      let currentlyPM = isPM;
+      const hourSel = document.createElement('select');
+      hourSel.style.cssText = selectStyle + 'width:42px;';
+      for (let h = 1; h <= 12; h++) {
+        const opt = document.createElement('option');
+        opt.value = h;
+        opt.textContent = h;
+        if (h === currentHour12) opt.selected = true;
+        hourSel.appendChild(opt);
+      }
 
-      const ampmBtn = document.createElement('button');
-      ampmBtn.type = 'button';
-      ampmBtn.textContent = currentlyPM ? 'pm' : 'am';
-      ampmBtn.style.cssText = 'background:transparent;border:none;border-bottom:1px solid rgba(243,241,234,0.4);color:var(--ink-dim);font-family:var(--ui);font-size:13px;font-weight:500;cursor:pointer;padding:0;outline:none;';
-      ampmBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        currentlyPM = !currentlyPM;
-        ampmBtn.textContent = currentlyPM ? 'pm' : 'am';
+      const ampmSel = document.createElement('select');
+      ampmSel.style.cssText = selectStyle + 'width:46px;';
+      ['am', 'pm'].forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        if ((v === 'pm') === isPM) opt.selected = true;
+        ampmSel.appendChild(opt);
       });
 
-      wrapper.appendChild(input);
-      wrapper.appendChild(ampmBtn);
-      scrubberTimeEl.textContent = '';
-      scrubberTimeEl.appendChild(wrapper);
-      input.focus();
-      input.select();
-
       function commit() {
-        let val = parseInt(input.value, 10);
-        if (isNaN(val)) val = currentHour12;
-        val = Math.max(1, Math.min(12, val));
-        const hour24 = val % 12 + (currentlyPM ? 12 : 0);
+        const val = parseInt(hourSel.value, 10);
+        const newIsPM = ampmSel.value === 'pm';
+        const hour24 = val % 12 + (newIsPM ? 12 : 0);
         selectedHour = selectedDay * 24 + hour24;
         renderDayChips();
         updateSliderPosition();
@@ -787,11 +781,22 @@
         syncPointForecastToHour();
       }
 
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { commit(); input.blur(); }
-        if (e.key === 'Escape') { updateScrubberReadout(); }
+      hourSel.addEventListener('change', commit);
+      ampmSel.addEventListener('change', commit);
+
+      wrapper.appendChild(hourSel);
+      wrapper.appendChild(ampmSel);
+      scrubberTimeEl.textContent = '';
+      scrubberTimeEl.appendChild(wrapper);
+      hourSel.focus();
+
+      document.addEventListener('mousedown', function closePicker(e) {
+        if (!wrapper.contains(e.target)) {
+          commit();
+          updateScrubberReadout();
+          document.removeEventListener('mousedown', closePicker);
+        }
       });
-      input.addEventListener('blur', commit);
     });
 
     sliderEl.addEventListener('input', () => {
@@ -916,6 +921,8 @@
     function applyLayerVisibility(layer) {
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
+        scrubberEl.style.display = layer.visible ? '' : 'none';
+        if (!layer.visible && pfEl.style.display === 'flex') positionPointForecast();
       } else if (layer.id === 'elevation') {
         const vis = layer.visible ? 'visible' : 'none';
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
