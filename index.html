@@ -842,8 +842,7 @@
       hourSel.focus();
 
       document.addEventListener('mousedown', function closePicker(e) {
-        if (!wrapper.contains(e.target)) {
-          commit();
+        if (!wrapper.contains(e.target) && e.target !== scrubberTimeEl) {
           updateScrubberReadout();
           document.removeEventListener('mousedown', closePicker);
         }
