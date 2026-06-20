@@ -6,6 +6,7 @@
   <title>Drift</title>
   <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100vw; height: 100vh; overflow: hidden; }
@@ -320,6 +321,9 @@
       return expr;
     }
 
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
     const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
@@ -423,42 +427,6 @@
         paint: { 'color-relief-color': buildColorReliefExpr(0, 1000) }
       }, beforeLayerId);
 
-      // Cycling infrastructure from existing vector tiles.
-      // Wrapped so a failure here can't abort the rest of style.load.
-      try {
-        const sources = map.getStyle().sources;
-        const vectorSourceName = Object.keys(sources).find(
-          name => sources[name].type === 'vector'
-        );
-        if (vectorSourceName) {
-          map.addLayer({
-            id: 'cycling-infra-layer',
-            type: 'line',
-            minzoom: 13,
-            source: 'openmaptiles',
-            'source-layer': 'transportation',
-            filter: ['match', ['coalesce', ['get', 'class'], ''], ['path', 'track'], true, false],
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round',
-              'visibility': 'none'
-            },
-            paint: {
-              'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3],
-              'line-color': ['match', ['get', 'class'],
-                'track', '#f5c842',
-                '#4caf50'
-              ],
-              'line-opacity': 0.9
-            }
-          }, beforeLayerId);
-        } else {
-          console.warn('Cycling layer: no vector source found in style');
-        }
-      } catch (err) {
-        console.error('Cycling layer failed to add:', err);
-      }
-
       map.once('idle', () => {
         lastSampledBounds = null;
         sampleAndRecolor();
@@ -483,6 +451,8 @@
     // ---------------------------------------------------------------
     // LAYERS
     // ---------------------------------------------------------------
+    let cyclingLoaded = false;
+
     const LAYERS = [
       { id: 'elevation', label: 'Elevation', colour: '#f5c842', visible: true },
       { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
@@ -888,7 +858,34 @@
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
         document.getElementById('legend').style.display = layer.visible ? '' : 'none';
       } else if (layer.id === 'cycling') {
-        if (map.getLayer('cycling-infra-layer')) {
+        if (!cyclingLoaded) {
+          map.addSource('cycling-pmtiles', {
+            type: 'vector',
+            url: 'pmtiles:///cycling_canada.pmtiles'
+          });
+          map.addLayer({
+            id: 'cycling-infra-layer',
+            type: 'line',
+            source: 'cycling-pmtiles',
+            'source-layer': 'cycling',
+            minzoom: 8,
+            layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'visible' },
+            paint: {
+              'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3],
+              'line-color': ['match', ['get', 'canbics_class'],
+                'cycle_track', '#4caf50',
+                'bike_path', '#4caf50',
+                'local_street_bikeway', '#4caf50',
+                'multi_use_path', '#90c840',
+                'painted_bike_lane', '#f5c842',
+                'gravel_trail', '#a07840',
+                '#888888'
+              ],
+              'line-opacity': 0.85
+            }
+          }, beforeLayerId);
+          cyclingLoaded = true;
+        } else {
           map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
         }
       }
@@ -938,8 +935,10 @@
         divider.style.cssText = 'border-top: 1px solid var(--hair); margin: 8px 0 6px;';
         layersPanelEl.appendChild(divider);
         [
-          { colour: '#4caf50', label: 'Path / cycleway' },
-          { colour: '#f5c842', label: 'Track' },
+          { colour: '#4caf50', label: 'Cycle track / bike path' },
+          { colour: '#90c840', label: 'Multi-use path' },
+          { colour: '#f5c842', label: 'Painted bike lane' },
+          { colour: '#a07840', label: 'Gravel trail' },
         ].forEach(({ colour, label }) => {
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:2px 0;';
