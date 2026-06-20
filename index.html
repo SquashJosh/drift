@@ -179,7 +179,7 @@
     #scrubber.collapsed { gap: 0; }
 
     #pointForecast {
-      position: fixed; left: 10px; bottom: 220px; z-index: 15;
+      position: fixed; left: 10px; bottom: 0; z-index: 15;
       width: 380px;
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -842,6 +842,7 @@
       dayChipsRowEl.style.display = scrubberCollapsed ? 'none' : '';
       sliderRowEl.style.display = scrubberCollapsed ? 'none' : '';
       scrubberEl.classList.toggle('collapsed', scrubberCollapsed);
+      if (pfEl.style.display === 'flex') positionPointForecast();
     });
 
     // ---------------------------------------------------------------
@@ -984,6 +985,13 @@
     // ---------------------------------------------------------------
     // POINT FORECAST
     // ---------------------------------------------------------------
+    function positionPointForecast() {
+      const scrubberHeight = scrubberEl.getBoundingClientRect().height;
+      pfEl.style.bottom = (scrubberHeight + 8) + 'px';
+    }
+
+    window.addEventListener('resize', () => { if (pfEl.style.display === 'flex') positionPointForecast(); });
+
     let pointForecast = null;
     let pointForecastLocation = null;
     let pointForecastName = null;
@@ -1151,6 +1159,7 @@
 
       pfNameEl.textContent = pointForecastName;
       pfConditionsEl.textContent = 'Fetching forecast…';
+      positionPointForecast();
       pfEl.style.display = 'flex';
 
       try {
