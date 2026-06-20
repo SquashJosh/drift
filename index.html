@@ -62,6 +62,29 @@
       font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-dim);
     }
 
+    #cyclingLegend {
+      position: absolute; left: 10px; top: 210px; z-index: 10;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 4px;
+      padding: 10px 14px; font-family: var(--ui); color: var(--ink);
+      display: none;
+      gap: 10px; align-items: stretch; flex-direction: column;
+    }
+    #cyclingLegend .title {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .cycling-item {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .cycling-item-line {
+      width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0;
+    }
+    .cycling-item-label {
+      font-size: 11px; color: var(--ink-dim); white-space: nowrap;
+    }
+
     .maplibregl-ctrl-top-right { margin-top: 56px; }
     .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
     .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
@@ -256,6 +279,11 @@
     <div class="title">Elevation</div>
     <div class="bar" id="legendBar"></div>
     <div class="ticks" id="legendTicks"></div>
+  </div>
+
+  <div id="cyclingLegend">
+    <div class="title">Cycling</div>
+    <div class="cycling-items" id="cyclingLegendItems"></div>
   </div>
 
   <div id="layersPanel"></div>
@@ -460,6 +488,29 @@
     ];
     const windLayer = LAYERS[1];
     const cyclingLayer = LAYERS[2];
+
+    const CYCLING_LEGEND_ITEMS = [
+      { colour: '#4caf50', label: 'Cycle track / bike path' },
+      { colour: '#90c840', label: 'Multi-use path' },
+      { colour: '#f5c842', label: 'Painted bike lane' },
+      { colour: '#a07840', label: 'Gravel trail' },
+      { colour: '#888888', label: 'Shared roadway' },
+    ];
+
+    const cyclingLegendEl = document.getElementById('cyclingLegend');
+    const cyclingLegendItemsEl = document.getElementById('cyclingLegendItems');
+
+    CYCLING_LEGEND_ITEMS.forEach(({ colour, label }) => {
+      const item = document.createElement('div');
+      item.className = 'cycling-item';
+      item.innerHTML = '<div class="cycling-item-line" style="background:' + colour + '"></div>' +
+        '<span class="cycling-item-label">' + label + '</span>';
+      cyclingLegendItemsEl.appendChild(item);
+    });
+
+    function updateCyclingLegend(visible) {
+      cyclingLegendEl.style.display = visible ? 'flex' : 'none';
+    }
 
     // ---------------------------------------------------------------
     // WIND: particle system + 7-day forecast scrubber
@@ -958,6 +1009,7 @@
         } else {
           map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
         }
+        updateCyclingLegend(layer.visible);
       }
     }
 
@@ -984,7 +1036,6 @@
         checkbox.addEventListener('change', () => {
           layer.visible = checkbox.checked;
           applyLayerVisibility(layer);
-          if (layer.id === 'cycling') renderLayersPanel();
         });
 
         const track = document.createElement('span');
@@ -998,26 +1049,6 @@
         row.appendChild(switchWrap);
         layersPanelEl.appendChild(row);
       });
-
-      // Cycling colour key — only when cycling layer is on
-      const cyclingEntry = LAYERS.find(l => l.id === 'cycling');
-      if (cyclingEntry && cyclingEntry.visible) {
-        const divider = document.createElement('div');
-        divider.style.cssText = 'border-top: 1px solid var(--hair); margin: 8px 0 6px;';
-        layersPanelEl.appendChild(divider);
-        [
-          { colour: '#4caf50', label: 'Cycle track / bike path' },
-          { colour: '#90c840', label: 'Multi-use path' },
-          { colour: '#f5c842', label: 'Painted bike lane' },
-          { colour: '#a07840', label: 'Gravel trail' },
-        ].forEach(({ colour, label }) => {
-          const row = document.createElement('div');
-          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:2px 0;';
-          row.innerHTML = '<div style="width:20px;height:3px;border-radius:2px;background:' + colour + ';flex-shrink:0"></div>' +
-            '<span style="font-size:11px;color:var(--ink-dim)">' + label + '</span>';
-          layersPanelEl.appendChild(row);
-        });
-      }
 
       // How to use
       const divider2 = document.createElement('div');
