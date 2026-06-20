@@ -112,7 +112,7 @@
 
     #scrubber {
       position: absolute; bottom: 24px; left: 10px; z-index: 20;
-      width: 380px;
+      width: 420px;
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--hair); border-radius: 6px;
@@ -121,9 +121,9 @@
       display: flex; flex-direction: column; gap: 8px;
     }
     #scrubber .row { display: flex; align-items: center; gap: 12px; }
-    #scrubber .row.top { justify-content: space-between; }
+    #scrubber .row.top { justify-content: space-between; flex-wrap: nowrap; overflow: hidden; }
     #scrubber .time { font-size: 14px; font-weight: 500; letter-spacing: 0.02em; }
-    #scrubber .wind { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    #scrubber .wind { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
     #scrubber .wind b { color: var(--ink); font-weight: 600; }
     #scrubber .edge {
       font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -680,7 +680,7 @@
       const ampm = hours >= 12 ? 'pm' : 'am';
       const h = hours % 12 || 12;
       const timeStr = h + ':' + minutes + ' ' + ampm;
-      return WEEKDAYS[d.getDay()] + ' ' + MONTHS[d.getMonth()] + ' ' + d.getDate() + ' · ' + timeStr;
+      return WEEKDAYS[d.getDay()] + ' ' + d.getDate() + ' · ' + timeStr;
     }
 
     const sliderEl = document.getElementById('hourSlider');
