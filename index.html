@@ -964,7 +964,8 @@
       });
     }
 
-    layersBtnEl.addEventListener('click', (e) => {
+    layersBtnEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();
       e.stopPropagation();
       if (layersPanelEl.style.display === 'block') {
         layersPanelEl.style.display = 'none';
