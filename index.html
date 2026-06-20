@@ -458,6 +458,7 @@
       { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
       { id: 'cycling', label: 'Cycling', colour: '#4caf50', visible: false },
     ];
+    let windParticleColor = '#ddeeff';
     const windLayer = LAYERS[1];
     const cyclingLayer = LAYERS[2];
 
@@ -614,7 +615,7 @@
         windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
         windCtx.globalCompositeOperation = 'source-over';
 
-        windCtx.fillStyle = '#ddeeff';
+        windCtx.fillStyle = windParticleColor;
         for (const p of particles) {
           const wind = interpolateScreenWind(p.x, p.y, currentScreenGrid);
 
@@ -858,6 +859,7 @@
         const vis = layer.visible ? 'visible' : 'none';
         if (map.getLayer('elevation-tint')) map.setLayoutProperty('elevation-tint', 'visibility', vis);
         document.getElementById('legend').style.display = layer.visible ? '' : 'none';
+        windParticleColor = layer.visible ? '#ddeeff' : '#1a6699';
       } else if (layer.id === 'cycling') {
         if (!cyclingLoaded) {
           map.addSource('cycling-pmtiles', {
