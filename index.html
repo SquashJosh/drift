@@ -755,12 +755,16 @@
       input.value = String(currentHour12);
       input.style.cssText = 'width:24px;background:transparent;border:none;border-bottom:1px solid rgba(243,241,234,0.4);color:var(--ink);font-family:var(--ui);font-size:14px;font-weight:500;outline:none;text-align:center;padding:0;';
 
+      let currentlyPM = isPM;
+
       const ampmBtn = document.createElement('button');
       ampmBtn.type = 'button';
-      ampmBtn.textContent = isPM ? 'pm' : 'am';
+      ampmBtn.textContent = currentlyPM ? 'pm' : 'am';
       ampmBtn.style.cssText = 'background:transparent;border:none;border-bottom:1px solid rgba(243,241,234,0.4);color:var(--ink-dim);font-family:var(--ui);font-size:13px;font-weight:500;cursor:pointer;padding:0;outline:none;';
-      ampmBtn.addEventListener('click', () => {
-        ampmBtn.textContent = ampmBtn.textContent === 'am' ? 'pm' : 'am';
+      ampmBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        currentlyPM = !currentlyPM;
+        ampmBtn.textContent = currentlyPM ? 'pm' : 'am';
       });
 
       wrapper.appendChild(input);
@@ -774,8 +778,7 @@
         let val = parseInt(input.value, 10);
         if (isNaN(val)) val = currentHour12;
         val = Math.max(1, Math.min(12, val));
-        const newIsPM = ampmBtn.textContent === 'pm';
-        const hour24 = val % 12 + (newIsPM ? 12 : 0);
+        const hour24 = val % 12 + (currentlyPM ? 12 : 0);
         selectedHour = selectedDay * 24 + hour24;
         renderDayChips();
         updateSliderPosition();
@@ -788,7 +791,7 @@
         if (e.key === 'Enter') { commit(); input.blur(); }
         if (e.key === 'Escape') { updateScrubberReadout(); }
       });
-      input.addEventListener('blur', () => { setTimeout(commit, 150); });
+      input.addEventListener('blur', commit);
     });
 
     sliderEl.addEventListener('input', () => {
