@@ -458,7 +458,6 @@
       { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
       { id: 'cycling', label: 'Cycling', colour: '#4caf50', visible: false },
     ];
-    let windParticleColor = '#1a6699';
     const windLayer = LAYERS[1];
     const cyclingLayer = LAYERS[2];
 
@@ -615,7 +614,7 @@
         windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
         windCtx.globalCompositeOperation = 'source-over';
 
-        windCtx.fillStyle = windParticleColor;
+        windCtx.fillStyle = '#ddeeff';
         for (const p of particles) {
           const wind = interpolateScreenWind(p.x, p.y, currentScreenGrid);
 
