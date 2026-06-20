@@ -291,7 +291,7 @@
   <div id="scrubber">
     <div id="windLoading">Loading wind data&hellip;</div>
     <div class="row top">
-      <div class="time" id="scrubberTime" style="cursor:pointer" title="Click to set time">&mdash;</div>
+      <div class="time" id="scrubberTime">&mdash;</div>
       <div class="wind" id="scrubberWind">&mdash;</div>
       <button type="button" id="scrubberToggle">&times;</button>
     </div>
@@ -790,67 +790,6 @@
       }
       updateSliderPosition();
     }
-
-    scrubberTimeEl.addEventListener('click', () => {
-      const currentHour24 = selectedHour % 24;
-      const isPM = currentHour24 >= 12;
-      const currentHour12 = currentHour24 % 12 || 12;
-
-      const wrapper = document.createElement('span');
-      wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
-
-      const selectStyle = 'background:rgba(10,12,11,0.85);border:1px solid rgba(255,255,255,0.15);border-radius:4px;color:var(--ink);font-family:var(--ui);font-size:13px;font-weight:500;outline:none;cursor:pointer;padding:2px 4px;appearance:none;-webkit-appearance:none;text-align:center;';
-
-      const hourSel = document.createElement('select');
-      hourSel.style.cssText = selectStyle + 'width:42px;';
-      for (let h = 1; h <= 12; h++) {
-        const opt = document.createElement('option');
-        opt.value = h;
-        opt.textContent = h;
-        if (h === currentHour12) opt.selected = true;
-        hourSel.appendChild(opt);
-      }
-
-      const ampmSel = document.createElement('select');
-      ampmSel.style.cssText = selectStyle + 'width:46px;';
-      ['am', 'pm'].forEach(v => {
-        const opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = v;
-        if ((v === 'pm') === isPM) opt.selected = true;
-        ampmSel.appendChild(opt);
-      });
-
-      function commit() {
-        const val = parseInt(hourSel.value, 10);
-        const newIsPM = ampmSel.value === 'pm';
-        const hour24 = val % 12 + (newIsPM ? 12 : 0);
-        selectedHour = selectedDay * 24 + hour24;
-        renderDayChips();
-        updateSliderPosition();
-        updateScrubberReadout();
-        respawnAllParticles();
-        syncPointForecastToHour();
-      }
-
-      hourSel.addEventListener('change', commit);
-      ampmSel.addEventListener('change', commit);
-
-      wrapper.appendChild(hourSel);
-      wrapper.appendChild(ampmSel);
-      scrubberTimeEl.textContent = '';
-      scrubberTimeEl.appendChild(wrapper);
-      hourSel.focus();
-
-      setTimeout(() => {
-        document.addEventListener('mousedown', function closePicker(e) {
-          if (!wrapper.contains(e.target)) {
-            updateScrubberReadout();
-            document.removeEventListener('mousedown', closePicker);
-          }
-        });
-      }, 0);
-    });
 
     sliderEl.addEventListener('input', () => {
       selectedHour = Math.min(167, selectedDay * 24 + parseInt(sliderEl.value, 10));
