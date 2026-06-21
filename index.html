@@ -202,8 +202,7 @@
     #scrubber.collapsed { gap: 0; }
 
     #pointForecast {
-      position: fixed; left: 50%; transform: translateX(-50%); top: 64px; z-index: 15;
-      width: 380px;
+      position: absolute; width: 320px; z-index: 15;
       background: var(--panel);
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--hair); border-radius: 8px;
@@ -212,10 +211,6 @@
     }
     @media (max-width: 600px) {
       #scrubber { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 6px 6px 0 0; }
-      #pointForecast {
-        left: 0; right: 0; transform: none; top: auto; bottom: 0; width: 100%;
-        border-radius: 8px 8px 0 0;
-      }
     }
     #pfHeader {
       padding: 12px 14px 8px; border-bottom: 1px solid var(--hair); flex-shrink: 0;
@@ -317,6 +312,8 @@
   </div>
 
   <script>
+    let clickMode = 'forecast'; // extend later for 'route'
+
     // Green -> yellow -> orange -> red elevation ramp. Map paint uses these
     // baked to ~0.55 alpha so the basemap shows through; legend uses full
     // opacity for readability against the dark panel.
@@ -708,6 +705,37 @@
     map.on('moveend', () => {
       pauseAnimation = false;
       respawnAllParticles();
+    });
+
+    function positionForecastPanel() {
+      if (!pointForecastLocation || pfEl.style.display === 'none') return;
+      const isMobile = window.innerWidth <= 600;
+      if (isMobile) return;
+
+      const screen = map.project(pointForecastLocation);
+      const mapEl = map.getContainer();
+      const mw = mapEl.offsetWidth;
+      const mh = mapEl.offsetHeight;
+      const pw = pfEl.offsetWidth || 320;
+      const ph = pfEl.offsetHeight || 260;
+      const offset = 16;
+
+      const onRight = screen.x + offset + pw <= mw - 20;
+      const x = onRight
+        ? screen.x + offset
+        : screen.x - offset - pw;
+
+      const above = screen.y - offset - ph >= 60;
+      const y = above
+        ? screen.y - offset - ph
+        : screen.y + offset;
+
+      pfEl.style.left = Math.round(x) + 'px';
+      pfEl.style.top = Math.round(y) + 'px';
+    }
+
+    map.on('move', () => {
+      if (window.innerWidth > 600) positionForecastPanel();
     });
 
     function nearestHourIndex() {
@@ -1167,6 +1195,31 @@
         rainLine;
     }
 
+    function setMobileForecastOpen(open) {
+      if (window.innerWidth > 600) return;
+      if (open) {
+        scrubberCollapsed = true;
+        scrubberToggleEl.textContent = '+';
+        dayChipsRowEl.style.display = 'none';
+        sliderRowEl.style.display = 'none';
+        scrubberEl.classList.add('collapsed');
+        pfEl.style.position = 'fixed';
+        pfEl.style.left = '0';
+        pfEl.style.right = '0';
+        pfEl.style.bottom = scrubberEl.offsetHeight + 'px';
+        pfEl.style.top = 'auto';
+        pfEl.style.width = '100%';
+        pfEl.style.borderRadius = '8px 8px 0 0';
+        pfEl.style.transform = 'none';
+      } else {
+        scrubberCollapsed = false;
+        scrubberToggleEl.textContent = '×';
+        dayChipsRowEl.style.display = '';
+        sliderRowEl.style.display = '';
+        scrubberEl.classList.remove('collapsed');
+      }
+    }
+
     function renderPointForecastPanel() {
       if (!pointForecast) return;
       pfNameEl.textContent = pointForecastName;
@@ -1175,7 +1228,9 @@
       selectedDayCell = Math.floor(selectedHour / 24);
       renderDayCells();
       renderDetailDiv(dayData[selectedDayCell]);
+      setMobileForecastOpen(true);
       pfEl.style.display = 'flex';
+      positionForecastPanel();
     }
 
     function syncPointForecastToHour() {
@@ -1185,12 +1240,14 @@
 
     pfCloseEl.addEventListener('click', () => {
       pfEl.style.display = 'none';
+      setMobileForecastOpen(false);
       pointForecast = null;
       dayData = null;
       if (currentMarker) { currentMarker.remove(); currentMarker = null; }
     });
 
     map.on('click', async (e) => {
+      if (clickMode !== 'forecast') return;
       const { lng, lat } = e.lngLat;
       const features = map.queryRenderedFeatures(e.point);
       const named = features.find(f => f.properties && typeof f.properties.name === 'string' && f.properties.name.trim());
