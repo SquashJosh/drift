@@ -941,6 +941,11 @@
       const STACK_TOP = 56;
       const GAP = 8;
       let currentTop = STACK_TOP;
+
+      if (layersPanelEl.style.display === 'block') {
+        currentTop += layersPanelEl.offsetHeight + GAP;
+      }
+
       [document.getElementById('legend'), document.getElementById('cyclingLegend')].forEach(panel => {
         if (!panel) return;
         const isVisible = getComputedStyle(panel).display !== 'none';
@@ -1053,15 +1058,18 @@
       e.stopPropagation();
       if (layersPanelEl.style.display === 'block') {
         layersPanelEl.style.display = 'none';
+        stackLeftPanels();
       } else {
         renderLayersPanel();
         layersPanelEl.style.display = 'block';
+        stackLeftPanels();
       }
     });
 
     document.addEventListener('mousedown', (e) => {
       if (!layersPanelEl.contains(e.target) && !layersBtnEl.contains(e.target)) {
         layersPanelEl.style.display = 'none';
+        stackLeftPanels();
       }
     });
 
