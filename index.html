@@ -711,9 +711,9 @@
           if (wind) {
             const spd = Math.sqrt(wind.U * wind.U + wind.V * wind.V);
             if (spd >= 0.001) {
-              const speedPx = spd * 0.10;
+              const speedPx = Math.max(0.3, Math.min(spd * 0.18, 4.0));
               p.x += (wind.U / spd) * speedPx;
-              p.y += (wind.V / spd) * speedPx;
+              p.y -= (wind.V / spd) * speedPx;
             }
             p.speed = spd || 0;
           }
