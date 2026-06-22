@@ -363,7 +363,40 @@
       attributionControl: false
     });
 
+    class LocateControl {
+      onAdd(map) {
+        this._map = map;
+        this._container = document.createElement('div');
+        this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+        this._container.style.cssText = 'background: rgba(10,12,11,0.62); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.10); border-radius: 4px;';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.title = 'Go to my location';
+        btn.style.cssText = 'width:29px; height:29px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; cursor:pointer; color:rgba(243,241,234,0.55); padding:0;';
+        btn.innerHTML = '<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="9" y1="14" x2="9" y2="17"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="14" y1="9" x2="17" y2="9"/></svg>';
+
+        btn.addEventListener('mouseenter', () => btn.style.color = 'rgba(243,241,234,1)');
+        btn.addEventListener('mouseleave', () => btn.style.color = 'rgba(243,241,234,0.55)');
+        btn.addEventListener('click', () => {
+          if (!navigator.geolocation) return;
+          navigator.geolocation.getCurrentPosition(
+            (pos) => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 11 }),
+            () => {}
+          );
+        });
+
+        this._container.appendChild(btn);
+        return this._container;
+      }
+      onRemove() {
+        this._container.parentNode?.removeChild(this._container);
+        this._map = undefined;
+      }
+    }
+
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(new LocateControl(), 'top-right');
     const attrControl = new maplibregl.AttributionControl({ compact: true });
     map.addControl(attrControl, 'bottom-right');
     // Force closed on load — MapLibre 5.x uses a <details> element;
@@ -457,6 +490,12 @@
         sampleAndRecolor();
         fetchWindData();
         stackLeftPanels();
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 11 }),
+            () => {}
+          );
+        }
       });
 
       map.on('moveend', scheduleRecolor);
