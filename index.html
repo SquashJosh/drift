@@ -729,15 +729,15 @@
             windCtx.lineTo(p.x, p.y);
             windCtx.stroke();
 
-            const spinWindow = 12;
+            const spinWindow = 14;
             if (p.age > p.maxAge - spinWindow) {
               const spinProgress = (p.age - (p.maxAge - spinWindow)) / spinWindow;
-              const spinRadius = 2 + spinProgress * 3;
-              const spinArc = spinProgress * Math.PI * 2;
-              windCtx.globalAlpha = opacity * (1 - spinProgress);
+              const spinRadius = 4 * (1 - spinProgress);
+              const spinArc = spinProgress * Math.PI * 4;
+              windCtx.globalAlpha = opacity * (1 - spinProgress * 0.7);
               windCtx.lineWidth = 0.6;
               windCtx.beginPath();
-              windCtx.arc(p.x, p.y, spinRadius, 0, spinArc);
+              windCtx.arc(p.x, p.y, Math.max(0.1, spinRadius), 0, spinArc);
               windCtx.stroke();
             }
           }
