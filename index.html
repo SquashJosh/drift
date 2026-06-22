@@ -402,7 +402,8 @@
 
   <script>
     let clickMode = 'forecast'; // 'forecast' | 'route'
-    const ROUTE_COLOUR = '#f0a500';
+    const ROUTE_COLOUR = '#1a1a1a';     // route line on map
+    const PROFILE_COLOUR = '#f0a500';   // elevation profile UI
     let waypoints = [];  // [[lng,lat], ...]
     let legs = [];       // GeoJSON FeatureCollections from BRouter, legs.length === waypoints.length - 1
     let routeLayersInitialised = false;
@@ -641,7 +642,6 @@
       { id: 'elevation', label: 'Elevation', colour: '#f5c842', visible: true },
       { id: 'wind', label: 'Wind', colour: '#3d8cb5', visible: true },
       { id: 'cycling', label: 'Cycling', colour: '#4caf50', visible: false },
-      { id: 'route', label: 'Route', colour: ROUTE_COLOUR, visible: false },
     ];
     const windLayer = LAYERS[1];
     const cyclingLayer = LAYERS[2];
@@ -1149,7 +1149,6 @@
     }
 
     function applyLayerVisibility(layer) {
-      if (layer.id === 'route') return; // placeholder — route builder not yet implemented
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
         scrubberEl.style.display = layer.visible ? '' : 'none';
@@ -1252,28 +1251,63 @@
     const routeBtnEl = document.getElementById('routeBtn');
     const routeControlsEl = document.getElementById('routeControls');
 
+    let priorLayerState = {};
+
     function enterRouteMode() {
       clickMode = 'route';
       routeBtnEl.classList.add('active');
+
+      // Snapshot current layer visibility
+      priorLayerState = {};
+      LAYERS.forEach(l => { priorLayerState[l.id] = l.visible; });
+
+      // Set route-mode defaults: elevation off, wind off, cycling on
+      LAYERS.forEach(l => {
+        let target;
+        if (l.id === 'elevation') target = false;
+        else if (l.id === 'wind') target = false;
+        else if (l.id === 'cycling') target = true;
+        else target = l.visible;
+        if (l.visible !== target) {
+          l.visible = target;
+          applyLayerVisibility(l);
+        }
+      });
+
       // Close any open forecast panel
       pfEl.style.display = 'none';
       setMobileForecastOpen(false);
       pointForecast = null;
       dayData = null;
       if (currentMarker) { currentMarker.remove(); currentMarker = null; }
+
       // Swap scrubber for route controls
       scrubberEl.style.display = 'none';
       routeControlsEl.style.display = 'flex';
       stackRouteControls();
+      renderLayersPanel();
     }
 
     function exitRouteMode() {
       clickMode = 'forecast';
       routeBtnEl.classList.remove('active');
+
+      // Restore prior layer visibility
+      LAYERS.forEach(l => {
+        if (priorLayerState.hasOwnProperty(l.id)) {
+          const target = priorLayerState[l.id];
+          if (l.visible !== target) {
+            l.visible = target;
+            applyLayerVisibility(l);
+          }
+        }
+      });
+
       clearRoute();
       routeControlsEl.style.display = 'none';
       document.getElementById('elevationProfile').style.display = 'none';
       scrubberEl.style.display = '';
+      renderLayersPanel();
     }
 
     routeBtnEl.addEventListener('click', () => {
@@ -1324,6 +1358,7 @@
     let selectedDayCell = 0;
     let dayData = null;
     let currentMarker = null;
+    let profileHoverMarker = null;
 
     const pfEl = document.getElementById('pointForecast');
     const pfNameEl = document.getElementById('pfName');
@@ -1561,8 +1596,8 @@
         return;
       }
 
-      // Collect all [distance, elevation] points
-      const points = [];
+      // Build flat coordinate list with cumulative distance
+      const allCoords = []; // { coord: [lng,lat,ele], dist: cumulative km }
       let cumDist = 0;
       let prevCoord = null;
       let totalGain = 0;
@@ -1573,33 +1608,30 @@
         if (!f) continue;
         for (const coord of f.geometry.coordinates) {
           const ele = coord[2] ?? 0;
-          if (prevCoord) {
-            cumDist += haversine(prevCoord, coord);
-          }
+          if (prevCoord) cumDist += haversine(prevCoord, coord);
           if (prevEle !== null && ele > prevEle) totalGain += ele - prevEle;
-          points.push([cumDist, ele]);
+          allCoords.push({ coord, dist: cumDist });
           prevCoord = coord;
           prevEle = ele;
         }
       }
 
-      if (points.length < 2) return;
+      if (allCoords.length < 2) return;
 
       const totalDist = cumDist;
-      const minEle = Math.min(...points.map(p => p[1]));
-      const maxEle = Math.max(...points.map(p => p[1]));
+      const eles = allCoords.map(p => p.coord[2] ?? 0);
+      const minEle = Math.min(...eles);
+      const maxEle = Math.max(...eles);
       const eleRange = maxEle - minEle || 1;
 
-      // SVG dimensions
       const W = 388, H = 80, pad = 2;
       const toX = d => pad + (d / totalDist) * (W - pad * 2);
       const toY = e => H - pad - ((e - minEle) / eleRange) * (H - pad * 2);
 
-      const pathD = points.map((p, i) =>
-        (i === 0 ? 'M' : 'L') + toX(p[0]).toFixed(1) + ',' + toY(p[1]).toFixed(1)
+      const pathD = allCoords.map((p, i) =>
+        (i === 0 ? 'M' : 'L') + toX(p.dist).toFixed(1) + ',' + toY(p.coord[2] ?? 0).toFixed(1)
       ).join(' ');
 
-      // Filled area path
       const areaD = pathD +
         ' L' + toX(totalDist).toFixed(1) + ',' + H +
         ' L' + toX(0).toFixed(1) + ',' + H + ' Z';
@@ -1608,22 +1640,68 @@
       svgEl.innerHTML =
         '<defs>' +
           '<linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="' + ROUTE_COLOUR + '" stop-opacity="0.4"/>' +
-            '<stop offset="100%" stop-color="' + ROUTE_COLOUR + '" stop-opacity="0.05"/>' +
+            '<stop offset="0%" stop-color="' + PROFILE_COLOUR + '" stop-opacity="0.4"/>' +
+            '<stop offset="100%" stop-color="' + PROFILE_COLOUR + '" stop-opacity="0.05"/>' +
           '</linearGradient>' +
         '</defs>' +
         '<path d="' + areaD + '" fill="url(#profGrad)"/>' +
-        '<path d="' + pathD + '" fill="none" stroke="' + ROUTE_COLOUR + '" stroke-width="1.5" stroke-linejoin="round"/>';
+        '<path d="' + pathD + '" fill="none" stroke="' + PROFILE_COLOUR + '" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<line id="profCursor" x1="0" y1="0" x2="0" y2="' + H + '" stroke="rgba(255,255,255,0.4)" stroke-width="1" display="none"/>';
 
       statsEl.innerHTML =
         '<b>' + totalDist.toFixed(1) + ' km</b>' +
         ' &nbsp;·&nbsp; ' +
-        '<b>↑ ' + Math.round(totalGain) + ' m</b>' +
-        ' &nbsp;·&nbsp; ' +
-        Math.round(minEle) + '–' + Math.round(maxEle) + ' m elevation';
+        '<b>↑ ' + Math.round(totalGain) + ' m</b>';
 
       profileEl.style.display = 'flex';
       stackRouteControls();
+
+      // Hover interaction
+      svgEl.addEventListener('mousemove', (e) => {
+        const rect = svgEl.getBoundingClientRect();
+        const cssX = e.clientX - rect.left;
+        const svgX = pad + (cssX / rect.width) * (W - pad * 2);
+        const frac = Math.max(0, Math.min(1, (svgX - pad) / (W - pad * 2)));
+        const hoverDist = frac * totalDist;
+
+        // Find nearest coordinate by distance
+        let nearest = allCoords[0];
+        let bestDiff = Infinity;
+        for (const pt of allCoords) {
+          const diff = Math.abs(pt.dist - hoverDist);
+          if (diff < bestDiff) { bestDiff = diff; nearest = pt; }
+        }
+
+        // Move cursor line
+        const cursorEl = document.getElementById('profCursor');
+        if (cursorEl) {
+          const cx = toX(nearest.dist).toFixed(1);
+          cursorEl.setAttribute('x1', cx);
+          cursorEl.setAttribute('x2', cx);
+          cursorEl.setAttribute('display', '');
+        }
+
+        // Place or move map marker
+        const lngLat = [nearest.coord[0], nearest.coord[1]];
+        if (!profileHoverMarker) {
+          const el = document.createElement('div');
+          el.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #1a1a1a;pointer-events:none;';
+          profileHoverMarker = new maplibregl.Marker({ element: el })
+            .setLngLat(lngLat)
+            .addTo(map);
+        } else {
+          profileHoverMarker.setLngLat(lngLat);
+        }
+      });
+
+      svgEl.addEventListener('mouseleave', () => {
+        const cursorEl = document.getElementById('profCursor');
+        if (cursorEl) cursorEl.setAttribute('display', 'none');
+        if (profileHoverMarker) {
+          profileHoverMarker.remove();
+          profileHoverMarker = null;
+        }
+      });
     }
 
     async function fetchLeg(from, to) {
@@ -1664,6 +1742,7 @@
         drawRoute();
         drawWaypoints();
       }
+      if (profileHoverMarker) { profileHoverMarker.remove(); profileHoverMarker = null; }
       document.getElementById('elevationProfile').style.display = 'none';
       document.getElementById('exportGpxBtn').disabled = true;
       stackRouteControls();
