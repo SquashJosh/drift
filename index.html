@@ -313,6 +313,7 @@
 
   <script>
     let clickMode = 'forecast'; // extend later for 'route'
+    const ROUTE_COLOUR = '#f0a500'; // reserved accent — outside elevation and cycling hue ranges
 
     // Green -> yellow -> orange -> red elevation ramp. Map paint uses these
     // baked to ~0.55 alpha so the basemap shows through; legend uses full
@@ -334,14 +335,29 @@
       attribution: "Elevation: <a href='https://registry.opendata.aws/terrain-tiles/'>AWS Terrain Tiles</a> (Mapzen / 3DEP / others)"
     };
 
-    function buildColorReliefExpr(min, max) {
+    function currentRampRGB(desaturate) {
+      if (!desaturate) return RAMP_RGB;
+      return RAMP_RGB.map(rgb => {
+        const [r, g, b] = rgb.split(',').map(Number);
+        const grey = r * 0.299 + g * 0.587 + b * 0.114;
+        const mix = 0.45;
+        return [
+          Math.round(r + (grey - r) * mix),
+          Math.round(g + (grey - g) * mix),
+          Math.round(b + (grey - b) * mix)
+        ].join(', ');
+      });
+    }
+
+    function buildColorReliefExpr(min, max, desaturate = false) {
+      const ramp = currentRampRGB(desaturate);
       let lo = min, hi = max;
-      if (hi - lo < 1e-6) hi = lo + 1e-6; // guard against a flat viewport
-      const n = RAMP_RGB.length;
+      if (hi - lo < 1e-6) hi = lo + 1e-6;
+      const n = ramp.length;
       const expr = ['interpolate', ['linear'], ['coalesce', ['elevation'], lo]];
       for (let i = 0; i < n; i++) {
         const val = lo + (hi - lo) * (i / (n - 1));
-        expr.push(val, `rgba(${RAMP_RGB[i]}, 0.55)`);
+        expr.push(val, `rgba(${ramp[i]}, 0.55)`);
       }
       return expr;
     }
@@ -407,7 +423,7 @@
     });
 
     function updateColorRelief(min, max) {
-      const expr = buildColorReliefExpr(min, max);
+      const expr = buildColorReliefExpr(min, max, cyclingVisible);
       try {
         map.setPaintProperty(elevationLayerId, 'color-relief-color', expr);
       } catch (e) {
@@ -517,11 +533,13 @@
     // LAYERS
     // ---------------------------------------------------------------
     let cyclingLoaded = false;
+    let cyclingVisible = false;
 
     const LAYERS = [
       { id: 'elevation', label: 'Elevation', colour: '#f5c842', visible: true },
       { id: 'wind', label: 'Wind', colour: '#3d8cb5', visible: true },
       { id: 'cycling', label: 'Cycling', colour: '#4caf50', visible: false },
+      { id: 'route', label: 'Route', colour: ROUTE_COLOUR, visible: false },
     ];
     const windLayer = LAYERS[1];
     const cyclingLayer = LAYERS[2];
@@ -1019,6 +1037,7 @@
     }
 
     function applyLayerVisibility(layer) {
+      if (layer.id === 'route') return; // placeholder — route builder not yet implemented
       if (layer.id === 'wind') {
         windCanvas.style.display = layer.visible ? '' : 'none';
         scrubberEl.style.display = layer.visible ? '' : 'none';
@@ -1028,6 +1047,9 @@
         document.getElementById('legend').style.display = layer.visible ? 'flex' : 'none';
         stackLeftPanels();
       } else if (layer.id === 'cycling') {
+        cyclingVisible = layer.visible;
+        lastSampledBounds = null;
+        scheduleRecolor();
         if (!cyclingLoaded) {
           map.addSource('cycling-pmtiles', {
             type: 'vector',
@@ -1316,8 +1338,7 @@
       if (currentMarker) { currentMarker.remove(); currentMarker = null; }
     });
 
-    map.on('click', async (e) => {
-      if (clickMode !== 'forecast') return;
+    async function handleForecastClick(e) {
       const { lng, lat } = e.lngLat;
       const features = map.queryRenderedFeatures(e.point);
       const named = features.find(f => f.properties && typeof f.properties.name === 'string' && f.properties.name.trim());
@@ -1349,6 +1370,10 @@
         console.error('Point forecast fetch failed:', err);
         pfConditionsEl.textContent = 'Failed to load forecast.';
       }
+    }
+
+    map.on('click', (e) => {
+      if (clickMode === 'forecast') handleForecastClick(e);
     });
   </script>
 </body>
