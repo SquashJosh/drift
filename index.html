@@ -655,6 +655,7 @@
         }
         if (speed >= 2 || attempt === 4) {
           p.x = x; p.y = y;
+          p.prevX = p.x; p.prevY = p.y;
           p.age = 0;
           p.maxAge = 25 + Math.floor(Math.random() * 21);
           p.speed = speed;
@@ -669,7 +670,7 @@
 
     // Initialise with staggered ages so they don't all fade in at once
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const p = { x: 0, y: 0, age: 0, maxAge: 30, speed: 0 };
+      const p = { x: 0, y: 0, prevX: 0, prevY: 0, age: 0, maxAge: 30, speed: 0 };
       spawnParticle(p);
       p.age = Math.floor(Math.random() * p.maxAge);
       particles.push(p);
@@ -698,18 +699,19 @@
       // Wind particles
       if (windLayer.visible) {
         windCtx.globalCompositeOperation = 'destination-out';
-        windCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        windCtx.fillStyle = 'rgba(0, 0, 0, 0.12)';
         windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
         windCtx.globalCompositeOperation = 'source-over';
 
-        windCtx.fillStyle = '#1a6699';
         for (const p of particles) {
           const wind = interpolateScreenWind(p.x, p.y, currentScreenGrid);
 
+          p.prevX = p.x;
+          p.prevY = p.y;
           if (wind) {
             const spd = Math.sqrt(wind.U * wind.U + wind.V * wind.V);
             if (spd >= 0.001) {
-              const speedPx = spd * 0.06;
+              const speedPx = spd * 0.10;
               p.x += (wind.U / spd) * speedPx;
               p.y += (wind.V / spd) * speedPx;
             }
@@ -719,9 +721,13 @@
           const opacity = particleOpacity(p.age, p.maxAge);
           if (opacity > 0) {
             windCtx.globalAlpha = opacity;
+            windCtx.strokeStyle = '#ddeeff';
+            windCtx.lineWidth = 1.2;
+            windCtx.lineCap = 'round';
             windCtx.beginPath();
-            windCtx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
-            windCtx.fill();
+            windCtx.moveTo(p.prevX, p.prevY);
+            windCtx.lineTo(p.x, p.y);
+            windCtx.stroke();
           }
 
           p.age++;
