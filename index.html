@@ -720,13 +720,30 @@
 
           const opacity = particleOpacity(p.age, p.maxAge);
           if (opacity > 0) {
+            const dx = p.x - p.prevX;
+            const dy = p.y - p.prevY;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const tx = dx / len;
+            const ty = dy / len;
+
             windCtx.globalAlpha = opacity;
             windCtx.strokeStyle = '#1a6699';
             windCtx.lineWidth = 0.8;
             windCtx.lineCap = 'round';
+
+            // Tail
             windCtx.beginPath();
             windCtx.moveTo(p.prevX, p.prevY);
             windCtx.lineTo(p.x, p.y);
+            windCtx.stroke();
+
+            // Arrowhead at leading edge
+            const ah = 3.5;
+            windCtx.lineWidth = 0.7;
+            windCtx.beginPath();
+            windCtx.moveTo(p.x - tx * ah + ty * ah * 0.5, p.y - ty * ah - tx * ah * 0.5);
+            windCtx.lineTo(p.x, p.y);
+            windCtx.lineTo(p.x - tx * ah - ty * ah * 0.5, p.y - ty * ah + tx * ah * 0.5);
             windCtx.stroke();
           }
 
