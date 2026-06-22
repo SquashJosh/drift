@@ -1029,7 +1029,7 @@
       if (windFetchTimer) clearTimeout(windFetchTimer);
       windFetchTimer = setTimeout(fetchWindData, 400);
     }
-    map.on('idle', scheduleWindFetch);
+    map.on('moveend', scheduleWindFetch);
 
     async function fetchWindData() {
       const token = ++fetchToken;
