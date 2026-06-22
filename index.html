@@ -104,6 +104,17 @@
     #layersBtn:hover { color: var(--ink); }
     #layersBtn svg { width: 16px; height: 16px; }
 
+    #routeBtn {
+      width: 24px; height: 24px;
+      background: transparent; border: none; padding: 0;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--ink-dim); flex-shrink: 0; border-radius: 4px;
+      transition: color 0.15s;
+    }
+    #routeBtn:hover { color: var(--ink); }
+    #routeBtn svg { width: 16px; height: 16px; }
+    #routeBtn.active { color: #f0a500; }
+
     /* Layers panel */
     #layersPanel {
       position: absolute; top: 48px; left: 0; z-index: 20;
@@ -228,6 +239,50 @@
     #pfDays { display: flex; justify-content: space-evenly; align-items: center; padding: 12px 8px; }
     #pfDetail { padding: 8px 14px 14px; border-top: 1px solid var(--hair); }
 
+    #routeControls {
+      position: absolute; bottom: 24px; left: 10px; z-index: 20;
+      display: none; align-items: center; gap: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 8px 12px;
+      font-family: var(--ui);
+    }
+    #routeControls button {
+      display: flex; align-items: center; gap: 5px;
+      background: transparent; border: 1px solid var(--hair); border-radius: 4px;
+      color: var(--ink-dim); font-family: var(--ui); font-size: 11px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 5px 8px; cursor: pointer; transition: color 0.15s, border-color 0.15s;
+    }
+    #routeControls button:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-dim); }
+    #routeControls button:disabled { opacity: 0.35; cursor: default; }
+
+    #elevationProfile {
+      position: absolute; bottom: 24px; left: 10px; z-index: 20;
+      width: 420px;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 12px 16px;
+      display: none; flex-direction: column; gap: 6px;
+      font-family: var(--ui);
+    }
+    #profileStats {
+      font-size: 11px; color: var(--ink-dim);
+      font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+    }
+    #profileStats b { color: var(--ink); font-weight: 600; }
+    #profileSvg {
+      width: 100%; height: 80px; display: block;
+      overflow: visible;
+    }
+
+    @media (max-width: 600px) {
+      #elevationProfile { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 6px 6px 0 0; }
+      #routeControls { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; justify-content: center; }
+    }
+
     .drift-pin {
       width: 14px;
       height: 14px;
@@ -265,6 +320,14 @@
           <line x1="2" y1="13" x2="16" y2="13"/>
         </svg>
       </button>
+      <button id="routeBtn" type="button" title="Build route">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="3" cy="15" r="2"/>
+          <circle cx="15" cy="3" r="2"/>
+          <path d="M3 13 C3 8 9 10 9 5"/>
+          <path d="M9 5 C9 3 11 3 13 3"/>
+        </svg>
+      </button>
     </div>
     <div id="readout"><b id="elev">&mdash;</b></div>
   </div>
@@ -299,6 +362,32 @@
     </div>
   </div>
 
+  <div id="routeControls">
+    <button type="button" id="undoBtn" title="Undo last waypoint">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+        <path d="M3 9 L7 5 L7 8 C12 8 15 11 15 15 C13 12 10 11 7 11 L7 13 Z"/>
+      </svg>
+      Undo
+    </button>
+    <button type="button" id="clearRouteBtn" title="Clear route">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="14" height="14">
+        <line x1="4" y1="4" x2="14" y2="14"/><line x1="14" y1="4" x2="4" y2="14"/>
+      </svg>
+      Clear
+    </button>
+    <button type="button" id="exportGpxBtn" title="Export GPX" disabled>
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="14" height="14">
+        <path d="M9 3 L9 12 M5 9 L9 13 L13 9"/><line x1="3" y1="15" x2="15" y2="15"/>
+      </svg>
+      GPX
+    </button>
+  </div>
+
+  <div id="elevationProfile">
+    <div id="profileStats"></div>
+    <svg id="profileSvg" preserveAspectRatio="none"></svg>
+  </div>
+
   <div id="pointForecast">
     <div id="pfHeader">
       <div id="pfTitleRow">
@@ -312,8 +401,11 @@
   </div>
 
   <script>
-    let clickMode = 'forecast'; // extend later for 'route'
-    const ROUTE_COLOUR = '#f0a500'; // reserved accent — outside elevation and cycling hue ranges
+    let clickMode = 'forecast'; // 'forecast' | 'route'
+    const ROUTE_COLOUR = '#f0a500';
+    let waypoints = [];  // [[lng,lat], ...]
+    let legs = [];       // GeoJSON FeatureCollections from BRouter, legs.length === waypoints.length - 1
+    let routeLayersInitialised = false;
 
     // Green -> yellow -> orange -> red elevation ramp. Map paint uses these
     // baked to ~0.55 alpha so the basemap shows through; legend uses full
@@ -347,6 +439,16 @@
           Math.round(b + (grey - b) * mix)
         ].join(', ');
       });
+    }
+
+    function haversine(a, b) {
+      const R = 6371;
+      const dLat = (b[1] - a[1]) * Math.PI / 180;
+      const dLng = (b[0] - a[0]) * Math.PI / 180;
+      const s = Math.sin(dLat / 2) ** 2 +
+        Math.cos(a[1] * Math.PI / 180) * Math.cos(b[1] * Math.PI / 180) *
+        Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.asin(Math.sqrt(s));
     }
 
     function buildColorReliefExpr(min, max, desaturate = false) {
@@ -1017,6 +1119,16 @@
     const layersBtnEl = document.getElementById('layersBtn');
     const layersPanelEl = document.getElementById('layersPanel');
 
+    function stackRouteControls() {
+      const profileEl = document.getElementById('elevationProfile');
+      const controlsEl = document.getElementById('routeControls');
+      if (profileEl.style.display !== 'none') {
+        controlsEl.style.bottom = (24 + profileEl.offsetHeight + 8) + 'px';
+      } else {
+        controlsEl.style.bottom = '24px';
+      }
+    }
+
     function stackLeftPanels() {
       const STACK_TOP = 56;
       const GAP = 8;
@@ -1136,6 +1248,51 @@
         layersPanelEl.appendChild(row);
       });
     }
+
+    const routeBtnEl = document.getElementById('routeBtn');
+    const routeControlsEl = document.getElementById('routeControls');
+
+    function enterRouteMode() {
+      clickMode = 'route';
+      routeBtnEl.classList.add('active');
+      // Close any open forecast panel
+      pfEl.style.display = 'none';
+      setMobileForecastOpen(false);
+      pointForecast = null;
+      dayData = null;
+      if (currentMarker) { currentMarker.remove(); currentMarker = null; }
+      // Swap scrubber for route controls
+      scrubberEl.style.display = 'none';
+      routeControlsEl.style.display = 'flex';
+      stackRouteControls();
+    }
+
+    function exitRouteMode() {
+      clickMode = 'forecast';
+      routeBtnEl.classList.remove('active');
+      clearRoute();
+      routeControlsEl.style.display = 'none';
+      document.getElementById('elevationProfile').style.display = 'none';
+      scrubberEl.style.display = '';
+    }
+
+    routeBtnEl.addEventListener('click', () => {
+      if (clickMode === 'route') exitRouteMode();
+      else enterRouteMode();
+    });
+
+    document.getElementById('undoBtn').addEventListener('click', () => {
+      if (waypoints.length === 0) return;
+      waypoints.pop();
+      if (legs.length > 0) legs.pop();
+      drawRoute();
+      drawWaypoints();
+      drawElevationProfile();
+      if (legs.length === 0) document.getElementById('exportGpxBtn').disabled = true;
+    });
+
+    document.getElementById('clearRouteBtn').addEventListener('click', clearRoute);
+    document.getElementById('exportGpxBtn').addEventListener('click', exportGPX);
 
     layersBtnEl.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -1338,6 +1495,205 @@
       if (currentMarker) { currentMarker.remove(); currentMarker = null; }
     });
 
+    function initRouteMapLayers() {
+      if (routeLayersInitialised) return;
+      map.addSource('route-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('waypoints-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
+      map.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route-data',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ROUTE_COLOUR, 'line-width': 3, 'line-opacity': 0.9 }
+      }, beforeLayerId);
+
+      map.addLayer({
+        id: 'route-waypoints',
+        type: 'circle',
+        source: 'waypoints-data',
+        paint: {
+          'circle-radius': ['case', ['==', ['get', 'index'], 0], 6, 4],
+          'circle-color': ['case', ['==', ['get', 'index'], 0], ROUTE_COLOUR, '#0a0d0c'],
+          'circle-stroke-color': ROUTE_COLOUR,
+          'circle-stroke-width': 2
+        }
+      }, beforeLayerId);
+
+      routeLayersInitialised = true;
+    }
+
+    function drawRoute() {
+      if (!routeLayersInitialised) return;
+      const coords = legs.flatMap(leg => {
+        const f = leg.features[0];
+        return f ? f.geometry.coordinates : [];
+      });
+      map.getSource('route-data').setData({
+        type: 'FeatureCollection',
+        features: coords.length ? [{
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords }
+        }] : []
+      });
+    }
+
+    function drawWaypoints() {
+      if (!routeLayersInitialised) return;
+      map.getSource('waypoints-data').setData({
+        type: 'FeatureCollection',
+        features: waypoints.map((wp, i) => ({
+          type: 'Feature',
+          properties: { index: i },
+          geometry: { type: 'Point', coordinates: wp }
+        }))
+      });
+    }
+
+    function drawElevationProfile() {
+      const profileEl = document.getElementById('elevationProfile');
+      const svgEl = document.getElementById('profileSvg');
+      const statsEl = document.getElementById('profileStats');
+
+      if (legs.length === 0) {
+        profileEl.style.display = 'none';
+        stackRouteControls();
+        return;
+      }
+
+      // Collect all [distance, elevation] points
+      const points = [];
+      let cumDist = 0;
+      let prevCoord = null;
+      let totalGain = 0;
+      let prevEle = null;
+
+      for (const leg of legs) {
+        const f = leg.features[0];
+        if (!f) continue;
+        for (const coord of f.geometry.coordinates) {
+          const ele = coord[2] ?? 0;
+          if (prevCoord) {
+            cumDist += haversine(prevCoord, coord);
+          }
+          if (prevEle !== null && ele > prevEle) totalGain += ele - prevEle;
+          points.push([cumDist, ele]);
+          prevCoord = coord;
+          prevEle = ele;
+        }
+      }
+
+      if (points.length < 2) return;
+
+      const totalDist = cumDist;
+      const minEle = Math.min(...points.map(p => p[1]));
+      const maxEle = Math.max(...points.map(p => p[1]));
+      const eleRange = maxEle - minEle || 1;
+
+      // SVG dimensions
+      const W = 388, H = 80, pad = 2;
+      const toX = d => pad + (d / totalDist) * (W - pad * 2);
+      const toY = e => H - pad - ((e - minEle) / eleRange) * (H - pad * 2);
+
+      const pathD = points.map((p, i) =>
+        (i === 0 ? 'M' : 'L') + toX(p[0]).toFixed(1) + ',' + toY(p[1]).toFixed(1)
+      ).join(' ');
+
+      // Filled area path
+      const areaD = pathD +
+        ' L' + toX(totalDist).toFixed(1) + ',' + H +
+        ' L' + toX(0).toFixed(1) + ',' + H + ' Z';
+
+      svgEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      svgEl.innerHTML =
+        '<defs>' +
+          '<linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="' + ROUTE_COLOUR + '" stop-opacity="0.4"/>' +
+            '<stop offset="100%" stop-color="' + ROUTE_COLOUR + '" stop-opacity="0.05"/>' +
+          '</linearGradient>' +
+        '</defs>' +
+        '<path d="' + areaD + '" fill="url(#profGrad)"/>' +
+        '<path d="' + pathD + '" fill="none" stroke="' + ROUTE_COLOUR + '" stroke-width="1.5" stroke-linejoin="round"/>';
+
+      statsEl.innerHTML =
+        '<b>' + totalDist.toFixed(1) + ' km</b>' +
+        ' &nbsp;·&nbsp; ' +
+        '<b>↑ ' + Math.round(totalGain) + ' m</b>' +
+        ' &nbsp;·&nbsp; ' +
+        Math.round(minEle) + '–' + Math.round(maxEle) + ' m elevation';
+
+      profileEl.style.display = 'flex';
+      stackRouteControls();
+    }
+
+    async function fetchLeg(from, to) {
+      const url = 'https://brouter.damsy.net/brouter' +
+        '?lonlats=' + from[0] + ',' + from[1] + '|' + to[0] + ',' + to[1] +
+        '&profile=trekking&alternativeidx=0&format=geojson';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('BRouter HTTP ' + res.status);
+      const data = await res.json();
+      if (!data.features || !data.features.length) throw new Error('BRouter: no route found');
+      return data;
+    }
+
+    function exportGPX() {
+      const coords = legs.flatMap(leg => {
+        const f = leg.features[0];
+        return f ? f.geometry.coordinates : [];
+      });
+      if (!coords.length) return;
+      const trkpts = coords.map(c =>
+        '    <trkpt lat="' + c[1] + '" lon="' + c[0] + '">' +
+        (c[2] != null ? '<ele>' + c[2].toFixed(1) + '</ele>' : '') +
+        '</trkpt>'
+      ).join('\n');
+      const gpx = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<gpx version="1.1" creator="Drift" xmlns="http://www.topografix.com/GPX/1/1">\n' +
+        '  <trk><trkseg>\n' + trkpts + '\n  </trkseg></trk>\n</gpx>';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([gpx], { type: 'application/gpx+xml' }));
+      a.download = 'drift-route.gpx';
+      a.click();
+    }
+
+    function clearRoute() {
+      waypoints = [];
+      legs = [];
+      if (routeLayersInitialised) {
+        drawRoute();
+        drawWaypoints();
+      }
+      document.getElementById('elevationProfile').style.display = 'none';
+      document.getElementById('exportGpxBtn').disabled = true;
+      stackRouteControls();
+    }
+
+    async function handleRouteClick(e) {
+      const { lng, lat } = e.lngLat;
+      waypoints.push([lng, lat]);
+      initRouteMapLayers();
+      drawWaypoints();
+
+      if (waypoints.length < 2) return;
+
+      const from = waypoints[waypoints.length - 2];
+      const to = waypoints[waypoints.length - 1];
+
+      try {
+        const leg = await fetchLeg(from, to);
+        legs.push(leg);
+        drawRoute();
+        drawElevationProfile();
+        document.getElementById('exportGpxBtn').disabled = false;
+      } catch (err) {
+        console.error('Route leg failed:', err);
+        // Roll back the waypoint we just added
+        waypoints.pop();
+        drawWaypoints();
+      }
+    }
+
     async function handleForecastClick(e) {
       const { lng, lat } = e.lngLat;
       const features = map.queryRenderedFeatures(e.point);
@@ -1374,6 +1730,7 @@
 
     map.on('click', (e) => {
       if (clickMode === 'forecast') handleForecastClick(e);
+      else if (clickMode === 'route') handleRouteClick(e);
     });
   </script>
 </body>
