@@ -729,15 +729,36 @@
             windCtx.lineTo(p.x, p.y);
             windCtx.stroke();
 
-            const spinWindow = 14;
+            const spinWindow = 18;
             if (p.age > p.maxAge - spinWindow) {
               const spinProgress = (p.age - (p.maxAge - spinWindow)) / spinWindow;
-              const spinRadius = 4 * (1 - spinProgress);
-              const spinArc = spinProgress * Math.PI * 4;
-              windCtx.globalAlpha = opacity * (1 - spinProgress * 0.7);
+
+              // Travel direction vector
+              const dx = p.x - p.prevX;
+              const dy = p.y - p.prevY;
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              const tx = dx / len;
+              const ty = dy / len;
+              // Perpendicular to travel direction (curl peels left of travel)
+              const px = -ty;
+              const py = tx;
+
+              // Draw Archimedean spiral inward from tip
+              const maxR = 4;
+              const rotations = 1.4;
+              const steps = 24;
+              windCtx.globalAlpha = opacity * (1 - spinProgress * 0.8);
               windCtx.lineWidth = 0.6;
               windCtx.beginPath();
-              windCtx.arc(p.x, p.y, Math.max(0.1, spinRadius), 0, spinArc);
+              windCtx.moveTo(p.x, p.y);
+              for (let s = 1; s <= steps; s++) {
+                const t = s / steps;
+                const r = maxR * (1 - spinProgress) * (1 - t);
+                const angle = t * rotations * Math.PI * 2;
+                const cx = p.x + px * r * Math.cos(angle) - tx * r * Math.sin(angle);
+                const cy = p.y + py * r * Math.cos(angle) - ty * r * Math.sin(angle);
+                windCtx.lineTo(cx, cy);
+              }
               windCtx.stroke();
             }
           }
