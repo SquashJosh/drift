@@ -699,7 +699,7 @@
       // Wind particles
       if (windLayer.visible) {
         windCtx.globalCompositeOperation = 'destination-out';
-        windCtx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+        windCtx.fillStyle = 'rgba(0, 0, 0, 0.05)';
         windCtx.fillRect(0, 0, windCanvas.width, windCanvas.height);
         windCtx.globalCompositeOperation = 'source-over';
 
@@ -722,7 +722,7 @@
           if (opacity > 0) {
             windCtx.globalAlpha = opacity;
             windCtx.strokeStyle = '#1a6699';
-            windCtx.lineWidth = 1.2;
+            windCtx.lineWidth = 0.8;
             windCtx.lineCap = 'round';
             windCtx.beginPath();
             windCtx.moveTo(p.prevX, p.prevY);
