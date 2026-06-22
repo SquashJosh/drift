@@ -520,7 +520,7 @@
 
     const LAYERS = [
       { id: 'elevation', label: 'Elevation', colour: '#f5c842', visible: true },
-      { id: 'wind', label: 'Wind', colour: '#ffffff', visible: true },
+      { id: 'wind', label: 'Wind', colour: '#3d8cb5', visible: true },
       { id: 'cycling', label: 'Cycling', colour: '#4caf50', visible: false },
     ];
     const windLayer = LAYERS[1];
@@ -727,7 +727,7 @@
             const ty = dy / len;
 
             windCtx.globalAlpha = opacity;
-            windCtx.strokeStyle = '#1a6699';
+            windCtx.strokeStyle = '#3d8cb5';
             windCtx.lineWidth = 0.8;
             windCtx.lineCap = 'round';
 
@@ -1221,8 +1221,8 @@
              'stroke-linecap="round" transform="rotate(-90 26 26)"/>';
       }
       s += '<line x1="' + f(x1) + '" y1="' + f(y1) + '" x2="' + f(x2) + '" y2="' + f(y2) + '" ' +
-           'stroke="#ddeeff" stroke-width="' + f(sw) + '" stroke-linecap="round"/>';
-      s += '<polygon points="' + f(x2) + ',' + f(y2) + ' ' + f(b1x) + ',' + f(b1y) + ' ' + f(b2x) + ',' + f(b2y) + '" fill="#ddeeff"/>';
+           'stroke="#3d8cb5" stroke-width="' + f(sw) + '" stroke-linecap="round"/>';
+      s += '<polygon points="' + f(x2) + ',' + f(y2) + ' ' + f(b1x) + ',' + f(b1y) + ' ' + f(b2x) + ',' + f(b2y) + '" fill="#3d8cb5"/>';
       s += '</svg>';
       return s;
     }
@@ -1255,7 +1255,7 @@
       const weekdays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
       const fullDate = weekdays[day.date.getDay()] + ', ' + MONTHS[day.date.getMonth()] + ' ' + day.date.getDate();
       const windLine = Math.round(day.minSpeed) + '–' + Math.round(day.maxSpeed) + ' km/h · ' +
-                       'gusts ' + Math.round(day.maxGust) + ' km/h · ' + cardinal(day.dominantDir);
+                       'gusts ' + Math.round(day.maxGust) + ' km/h · ' + cardinal((day.dominantDir + 180) % 360);
       const rainLine = day.maxRainProb >= 10
         ? '<div style="font-size:11px;color:rgba(100,160,255,0.9)">🌧 ' + Math.round(day.maxRainProb) + '% chance of rain</div>'
         : '<div style="font-size:11px;color:var(--ink-dim)">No significant rain</div>';
