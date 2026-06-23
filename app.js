@@ -1413,6 +1413,8 @@ getCurrentUser().then(user => {
       document.getElementById('elevationProfile').style.display = 'none';
       document.getElementById('exportGpxBtn').disabled = true;
       stackRouteControls();
+      activeRouteId = null;
+      updateSaveButtonState();
     }
 
     async function handleRouteClick(e) {
@@ -1647,14 +1649,6 @@ saveRouteBtnEl.addEventListener('click', async () => {
   }
   await doSaveRoute();
 });
-
-// Reset activeRouteId when route is cleared
-const _originalClearRoute = clearRoute;
-clearRoute = function() {
-  _originalClearRoute();
-  activeRouteId = null;
-  updateSaveButtonState();
-};
 
 // ---------------------------------------------------------------
 // MY ROUTES VIEW
@@ -1892,7 +1886,7 @@ function openRouteDetail(route) {
   if (detailMap) { detailMap.remove(); detailMap = null; }
   detailMap = new maplibregl.Map({
     container: 'routeDetailMap',
-    style: 'https://tiles.openfreemap.org/styles/liberty',
+    style: 'https://tiles.openfreemap.org/styles/dark',
     center: [-75.6972, 45.4215],
     zoom: 10,
     attributionControl: false,
