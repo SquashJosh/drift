@@ -2005,7 +2005,8 @@ routeDetailBackEl.addEventListener('click', closeRouteDetail);
 
 routeDetailEditEl.addEventListener('click', () => {
   if (!currentDetailRoute) return;
+  const routeToLoad = currentDetailRoute;
   closeRouteDetail();
   closeMyRoutes();
-  loadRouteOntoMap(currentDetailRoute);
+  loadRouteOntoMap(routeToLoad);
 });
