@@ -1,0 +1,299 @@
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100vw; height: 100vh; overflow: hidden; }
+    #map { width: 100%; height: 100%; background: #0a0d0c; position: relative; }
+
+    :root {
+      --panel: rgba(10, 12, 11, 0.62);
+      --hair: rgba(255, 255, 255, 0.10);
+      --ink: #f3f1ea;
+      --ink-dim: rgba(243, 241, 234, 0.55);
+      --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+
+    #topbar {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      height: 48px;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--hair);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+    }
+    #topbar h1 {
+      color: var(--ink); font-family: var(--ui);
+      font-size: 18px; font-weight: 500;
+      letter-spacing: 0.30em; text-transform: uppercase;
+    }
+    #readout {
+      font-family: var(--ui); font-variant-numeric: tabular-nums;
+      font-size: 13px; letter-spacing: 0.04em; color: var(--ink-dim);
+    }
+    #readout b { color: var(--ink); font-weight: 600; }
+
+    #legend {
+      position: absolute; left: 10px; top: 56px; z-index: 10; /* JS overrides top */
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 4px;
+      padding: 12px 14px; font-family: var(--ui); color: var(--ink);
+      display: flex; gap: 12px; align-items: stretch;
+    }
+    #legend .title {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--ink-dim); align-self: center;
+    }
+    #legend .bar {
+      width: 12px; height: 140px; border-radius: 2px;
+      box-shadow: inset 0 0 0 1px var(--hair);
+    }
+    #legend .ticks {
+      display: flex; flex-direction: column; justify-content: space-between;
+      font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-dim);
+    }
+
+    #cyclingLegend {
+      position: absolute; left: 10px; top: 56px; z-index: 10; /* JS overrides top */
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 4px;
+      padding: 10px 14px; font-family: var(--ui); color: var(--ink);
+      display: none;
+      gap: 10px; align-items: stretch; flex-direction: column;
+    }
+    #cyclingLegend .title {
+      font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .cycling-item {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .cycling-item-line {
+      width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0;
+    }
+    .cycling-item-label {
+      font-size: 11px; color: var(--ink-dim); white-space: nowrap;
+    }
+
+    .maplibregl-ctrl-top-right { margin-top: 56px; }
+    .maplibregl-ctrl-attrib { background: var(--panel) !important; backdrop-filter: blur(8px); }
+    .maplibregl-ctrl-attrib a { color: var(--ink-dim) !important; }
+
+    #wind-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 5;
+    }
+
+    /* Layers button — inline in topbar */
+    #layersBtn {
+      width: 24px; height: 24px;
+      background: transparent; border: none; padding: 0;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--ink-dim); flex-shrink: 0;
+    }
+    #layersBtn:hover { color: var(--ink); }
+    #layersBtn svg { width: 16px; height: 16px; }
+
+    #routeBtn {
+      width: 24px; height: 24px;
+      background: transparent; border: none; padding: 0;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--ink-dim); flex-shrink: 0; border-radius: 4px;
+      transition: color 0.15s;
+    }
+    #routeBtn:hover { color: var(--ink); }
+    #routeBtn svg { width: 16px; height: 16px; }
+    #routeBtn.active { color: #f0a500; }
+
+    /* Layers panel */
+    #layersPanel {
+      position: absolute; top: 48px; left: 0; z-index: 20;
+      background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 12px 14px; min-width: 200px;
+      font-family: var(--ui); color: var(--ink);
+      display: none;
+    }
+    .layer-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .layer-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .layer-label { flex: 1; font-size: 13px; color: var(--ink); }
+    .switch-wrap {
+      position: relative; display: inline-block; width: 32px; height: 18px; flex-shrink: 0;
+    }
+    .switch-wrap input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .switch-track {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--hair); border-radius: 9px; transition: background 0.2s;
+    }
+    .switch-track:before {
+      content: ''; position: absolute;
+      height: 12px; width: 12px; left: 3px; bottom: 3px;
+      background: var(--ink-dim); border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .switch-wrap input:checked + .switch-track { background: rgba(255,255,255,0.30); }
+    .switch-wrap input:checked + .switch-track:before { transform: translateX(14px); background: var(--ink); }
+
+    #scrubber {
+      position: absolute; bottom: 24px; left: 10px; z-index: 20;
+      width: 420px;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 12px 20px;
+      font-family: var(--ui); color: var(--ink);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #scrubber .row { display: flex; align-items: center; gap: 12px; }
+    #scrubber .row.top { justify-content: space-between; flex-wrap: nowrap; overflow: hidden; }
+    #scrubber .time { font-size: 14px; font-weight: 500; letter-spacing: 0.02em; }
+    #scrubber .wind { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #scrubber .wind b { color: var(--ink); font-weight: 600; }
+    #scrubber .edge {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--ink-dim); white-space: nowrap;
+    }
+
+    /* Loading overlay — floats above scrubber contents */
+    #windLoading {
+      display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 2;
+      background: var(--panel); border-radius: 6px;
+      align-items: center; justify-content: center;
+      font-family: var(--ui); font-size: 13px; color: var(--ink-dim);
+    }
+
+    /* Day chips */
+    #dayChips { display: flex; gap: 6px; }
+    .day-chip {
+      flex: 1; font-family: var(--ui); font-size: 11px; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 5px 0; cursor: pointer; border-radius: 4px;
+      background: transparent; color: var(--ink-dim); border: 1px solid var(--hair);
+      transition: background 0.15s, color 0.15s;
+    }
+    .day-chip.active { background: var(--ink); color: #0a0d0c; border-color: transparent; }
+    .day-chip:hover:not(.active) { border-color: var(--ink-dim); }
+
+    #hourSlider {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 3px; background: var(--hair); border-radius: 2px; outline: none;
+    }
+    #hourSlider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--ink); cursor: pointer; box-shadow: 0 0 0 3px var(--hair);
+    }
+    #hourSlider::-moz-range-thumb {
+      width: 12px; height: 12px; border-radius: 50%; background: var(--ink);
+      border: none; cursor: pointer; box-shadow: 0 0 0 3px var(--hair);
+    }
+    #hourSlider::-moz-range-track { height: 3px; background: var(--hair); border-radius: 2px; }
+
+    #nowBtn {
+      font-family: var(--ui); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--ink-dim); background: transparent; border: 1px solid var(--hair); border-radius: 4px;
+      padding: 4px 8px; cursor: pointer;
+    }
+    #nowBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+    #scrubberToggle {
+      background: transparent; border: none; cursor: pointer;
+      color: var(--ink-dim); font-size: 14px; padding: 0 0 0 12px; line-height: 1;
+    }
+    #scrubberToggle:hover { color: var(--ink); }
+    #scrubber.collapsed .row.top { border-bottom: 1px solid var(--hair); }
+    #scrubber.collapsed { gap: 0; }
+
+    #pointForecast {
+      position: absolute; width: 320px; z-index: 15;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 8px;
+      font-family: var(--ui); color: var(--ink);
+      display: none; flex-direction: column;
+    }
+    @media (max-width: 600px) {
+      #scrubber { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 6px 6px 0 0; }
+    }
+    #pfHeader {
+      padding: 12px 14px 8px; border-bottom: 1px solid var(--hair); flex-shrink: 0;
+    }
+    #pfTitleRow {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
+    }
+    #pfName { font-size: 13px; font-weight: 500; color: var(--ink); }
+    #pfClose {
+      background: transparent; border: none; cursor: pointer;
+      color: var(--ink-dim); font-size: 18px; line-height: 1; padding: 0 0 0 8px;
+    }
+    #pfClose:hover { color: var(--ink); }
+    #pfConditions { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    #pfDays { display: flex; justify-content: space-evenly; align-items: center; padding: 12px 8px; }
+    #pfDetail { padding: 8px 14px 14px; border-top: 1px solid var(--hair); }
+
+    #routeControls {
+      position: absolute; bottom: 24px; left: 10px; z-index: 20;
+      display: none; align-items: center; gap: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 8px 12px;
+      font-family: var(--ui);
+    }
+    #routeControls button {
+      display: flex; align-items: center; gap: 5px;
+      background: transparent; border: 1px solid var(--hair); border-radius: 4px;
+      color: var(--ink-dim); font-family: var(--ui); font-size: 11px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 5px 8px; cursor: pointer; transition: color 0.15s, border-color 0.15s;
+    }
+    #routeControls button:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-dim); }
+    #routeControls button:disabled { opacity: 0.35; cursor: default; }
+
+    #elevationProfile {
+      position: absolute; bottom: 24px; left: 10px; z-index: 20;
+      width: 420px;
+      background: var(--panel);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hair); border-radius: 6px;
+      padding: 12px 16px;
+      display: none; flex-direction: column; gap: 6px;
+      font-family: var(--ui);
+    }
+    #profileStats {
+      font-size: 11px; color: var(--ink-dim);
+      font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+    }
+    #profileStats b { color: var(--ink); font-weight: 600; }
+    #profileSvg {
+      width: 100%; height: 80px; display: block;
+      overflow: visible;
+    }
+
+    @media (max-width: 600px) {
+      #elevationProfile { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 6px 6px 0 0; }
+      #routeControls { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; justify-content: center; }
+    }
+
+    .drift-pin {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(243, 241, 234, 0.7);
+      background: rgba(10, 12, 11, 0.85);
+      box-shadow: 0 0 0 0 rgba(10, 12, 11, 0.6);
+      animation: pin-pulse 1.5s ease-out 1;
+      pointer-events: none;
+    }
+    .drift-pin::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: rgba(243, 241, 234, 0.9);
+    }
+    @keyframes pin-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(10,12,11,0.6); }
+      70%  { box-shadow: 0 0 0 10px rgba(10,12,11,0); }
+      100% { box-shadow: 0 0 0 0 rgba(10,12,11,0); }
+    }
