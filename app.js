@@ -1237,25 +1237,16 @@ getCurrentUser().then(user => {
       });
     }
 
-    function drawElevationProfile() {
-      const profileEl = document.getElementById('elevationProfile');
-      const svgEl = document.getElementById('profileSvg');
-      const statsEl = document.getElementById('profileStats');
+    function renderElevationProfile(svgEl, statsEl, legsData, onHover) {
+      if (!legsData || legsData.length === 0) return;
 
-      if (legs.length === 0) {
-        profileEl.style.display = 'none';
-        stackRouteControls();
-        return;
-      }
-
-      // Build flat coordinate list with cumulative distance
-      const allCoords = []; // { coord: [lng,lat,ele], dist: cumulative km }
+      const allCoords = [];
       let cumDist = 0;
       let prevCoord = null;
       let totalGain = 0;
       let prevEle = null;
 
-      for (const leg of legs) {
+      for (const leg of legsData) {
         const f = leg.features[0];
         if (!f) continue;
         for (const coord of f.geometry.coordinates) {
@@ -1276,7 +1267,7 @@ getCurrentUser().then(user => {
       const maxEle = Math.max(...eles);
       const eleRange = maxEle - minEle || 1;
 
-      const W = 388, H = 80, pad = 2;
+      const W = 800, H = 120, pad = 2;
       const toX = d => pad + (d / totalDist) * (W - pad * 2);
       const toY = e => H - pad - ((e - minEle) / eleRange) * (H - pad * 2);
 
@@ -1288,35 +1279,41 @@ getCurrentUser().then(user => {
         ' L' + toX(totalDist).toFixed(1) + ',' + H +
         ' L' + toX(0).toFixed(1) + ',' + H + ' Z';
 
+      // Distance markers
+      const markerCount = 6;
+      let markers = '';
+      for (let i = 1; i < markerCount; i++) {
+        const d = totalDist * (i / markerCount);
+        const x = toX(d).toFixed(1);
+        markers += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="' + H + '" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
+        markers += '<text x="' + x + '" y="' + (H - 4) + '" fill="rgba(243,241,234,0.3)" font-size="10" text-anchor="middle" font-family="system-ui">' + d.toFixed(0) + ' km</text>';
+      }
+
       svgEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
       svgEl.innerHTML =
         '<defs>' +
-          '<linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">' +
+          '<linearGradient id="profGrad' + svgEl.id + '" x1="0" y1="0" x2="0" y2="1">' +
             '<stop offset="0%" stop-color="' + PROFILE_COLOUR + '" stop-opacity="0.4"/>' +
             '<stop offset="100%" stop-color="' + PROFILE_COLOUR + '" stop-opacity="0.05"/>' +
           '</linearGradient>' +
         '</defs>' +
-        '<path d="' + areaD + '" fill="url(#profGrad)"/>' +
+        markers +
+        '<path d="' + areaD + '" fill="url(#profGrad' + svgEl.id + ')"/>' +
         '<path d="' + pathD + '" fill="none" stroke="' + PROFILE_COLOUR + '" stroke-width="1.5" stroke-linejoin="round"/>' +
-        '<line id="profCursor" x1="0" y1="0" x2="0" y2="' + H + '" stroke="rgba(255,255,255,0.4)" stroke-width="1" display="none"/>';
+        '<line id="profCursor_' + svgEl.id + '" x1="0" y1="0" x2="0" y2="' + H + '" stroke="rgba(255,255,255,0.4)" stroke-width="1" display="none"/>';
 
       statsEl.innerHTML =
         '<b>' + totalDist.toFixed(1) + ' km</b>' +
         ' &nbsp;·&nbsp; ' +
         '<b>↑ ' + Math.round(totalGain) + ' m</b>';
 
-      profileEl.style.display = 'flex';
-      stackRouteControls();
-
-      // Hover interaction
+      // Hover
       svgEl.addEventListener('mousemove', (e) => {
         const rect = svgEl.getBoundingClientRect();
         const cssX = e.clientX - rect.left;
-        const svgX = pad + (cssX / rect.width) * (W - pad * 2);
-        const frac = Math.max(0, Math.min(1, (svgX - pad) / (W - pad * 2)));
+        const frac = Math.max(0, Math.min(1, cssX / rect.width));
         const hoverDist = frac * totalDist;
 
-        // Find nearest coordinate by distance
         let nearest = allCoords[0];
         let bestDiff = Infinity;
         for (const pt of allCoords) {
@@ -1324,8 +1321,7 @@ getCurrentUser().then(user => {
           if (diff < bestDiff) { bestDiff = diff; nearest = pt; }
         }
 
-        // Move cursor line
-        const cursorEl = document.getElementById('profCursor');
+        const cursorEl = document.getElementById('profCursor_' + svgEl.id);
         if (cursorEl) {
           const cx = toX(nearest.dist).toFixed(1);
           cursorEl.setAttribute('x1', cx);
@@ -1333,27 +1329,46 @@ getCurrentUser().then(user => {
           cursorEl.setAttribute('display', '');
         }
 
-        // Place or move map marker
-        const lngLat = [nearest.coord[0], nearest.coord[1]];
+        if (onHover) onHover(nearest.coord);
+      });
+
+      svgEl.addEventListener('mouseleave', () => {
+        const cursorEl = document.getElementById('profCursor_' + svgEl.id);
+        if (cursorEl) cursorEl.setAttribute('display', 'none');
+        if (onHover) onHover(null);
+      });
+
+      return { allCoords, totalDist, totalGain, minEle, maxEle };
+    }
+
+    function drawElevationProfile() {
+      const profileEl = document.getElementById('elevationProfile');
+      const svgEl = document.getElementById('profileSvg');
+      const statsEl = document.getElementById('profileStats');
+
+      if (legs.length === 0) {
+        profileEl.style.display = 'none';
+        stackRouteControls();
+        return;
+      }
+
+      renderElevationProfile(svgEl, statsEl, legs, (coord) => {
+        if (!coord) {
+          if (profileHoverMarker) { profileHoverMarker.remove(); profileHoverMarker = null; }
+          return;
+        }
+        const lngLat = [coord[0], coord[1]];
         if (!profileHoverMarker) {
           const el = document.createElement('div');
           el.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #1a1a1a;pointer-events:none;';
-          profileHoverMarker = new maplibregl.Marker({ element: el })
-            .setLngLat(lngLat)
-            .addTo(map);
+          profileHoverMarker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
         } else {
           profileHoverMarker.setLngLat(lngLat);
         }
       });
 
-      svgEl.addEventListener('mouseleave', () => {
-        const cursorEl = document.getElementById('profCursor');
-        if (cursorEl) cursorEl.setAttribute('display', 'none');
-        if (profileHoverMarker) {
-          profileHoverMarker.remove();
-          profileHoverMarker = null;
-        }
-      });
+      profileEl.style.display = 'flex';
+      stackRouteControls();
     }
 
     async function fetchLeg(from, to) {
@@ -1739,7 +1754,7 @@ async function loadMyRoutes() {
       loadBtn.textContent = 'Open on map';
       loadBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        loadRouteOntoMap(route);
+        openRouteDetail(route);
       });
 
       const deleteBtn = document.createElement('button');
@@ -1761,6 +1776,7 @@ async function loadMyRoutes() {
 
       actions.appendChild(loadBtn);
       actions.appendChild(deleteBtn);
+      card.addEventListener('click', () => openRouteDetail(route));
       card.appendChild(name);
       card.appendChild(stats);
       card.appendChild(date);
@@ -1838,4 +1854,158 @@ myRoutesSignOutEl.addEventListener('click', async () => {
   currentUser = null;
   updateSaveButtonState();
   loadMyRoutes();
+});
+
+// ---------------------------------------------------------------
+// ROUTE DETAIL VIEW
+// ---------------------------------------------------------------
+const routeDetailViewEl = document.getElementById('routeDetailView');
+const routeDetailBackEl = document.getElementById('routeDetailBack');
+const routeDetailNameEl = document.getElementById('routeDetailName');
+const routeDetailEditEl = document.getElementById('routeDetailEdit');
+const routeDetailStatsEl = document.getElementById('routeDetailStats');
+const routeDetailMapLoadingEl = document.getElementById('routeDetailMapLoading');
+const routeDetailProfileSvgEl = document.getElementById('routeDetailProfileSvg');
+const routeDetailProfileStatsEl = document.getElementById('routeDetailProfileStats');
+
+let detailMap = null;
+let detailHoverMarker = null;
+let currentDetailRoute = null;
+
+function openRouteDetail(route) {
+  currentDetailRoute = route;
+  routeDetailViewEl.classList.add('open');
+
+  // Populate name and stats immediately
+  routeDetailNameEl.textContent = route.name;
+  routeDetailStatsEl.innerHTML =
+    '<span><b>' + (route.distance_km || 0) + ' km</b></span>' +
+    '<span><b>↑ ' + (route.gain_m || 0) + ' m</b></span>' +
+    '<span>' + formatDate(route.created_at) + '</span>';
+
+  // Clear previous profile
+  routeDetailProfileSvgEl.innerHTML = '';
+  routeDetailProfileStatsEl.innerHTML = '';
+  routeDetailMapLoadingEl.style.display = 'flex';
+
+  // Init detail map
+  if (detailMap) { detailMap.remove(); detailMap = null; }
+  detailMap = new maplibregl.Map({
+    container: 'routeDetailMap',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [-75.6972, 45.4215],
+    zoom: 10,
+    attributionControl: false,
+    interactive: true,
+  });
+
+  // Reconstruct legs from waypoints
+  const waypts = typeof route.waypoints === 'string'
+    ? JSON.parse(route.waypoints)
+    : route.waypoints;
+
+  if (!waypts || waypts.length < 2) {
+    routeDetailMapLoadingEl.style.display = 'none';
+    return;
+  }
+
+  detailMap.on('load', async () => {
+    const detailLegs = [];
+
+    // Add empty sources and layers
+    detailMap.addSource('detail-route', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    detailMap.addLayer({
+      id: 'detail-route-line',
+      type: 'line',
+      source: 'detail-route',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': ROUTE_COLOUR, 'line-width': 3, 'line-opacity': 0.9 }
+    });
+
+    // Fetch legs one by one
+    for (let i = 1; i < waypts.length; i++) {
+      try {
+        const leg = await fetchLeg(waypts[i - 1], waypts[i]);
+        detailLegs.push(leg);
+
+        // Update route line progressively
+        const coords = detailLegs.flatMap(l => l.features[0] ? l.features[0].geometry.coordinates : []);
+        detailMap.getSource('detail-route').setData({
+          type: 'FeatureCollection',
+          features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } }]
+        });
+
+        // Fit bounds to full route
+        const allLngs = coords.map(c => c[0]);
+        const allLats = coords.map(c => c[1]);
+        detailMap.fitBounds([
+          [Math.min(...allLngs) - 0.01, Math.min(...allLats) - 0.01],
+          [Math.max(...allLngs) + 0.01, Math.max(...allLats) + 0.01]
+        ], { padding: 32, animate: false });
+
+      } catch (err) {
+        console.error('Detail leg failed:', err);
+      }
+    }
+
+    routeDetailMapLoadingEl.style.display = 'none';
+
+    // Render elevation profile
+    renderElevationProfile(
+      routeDetailProfileSvgEl,
+      routeDetailProfileStatsEl,
+      detailLegs,
+      (coord) => {
+        if (!detailMap) return;
+        if (!coord) {
+          if (detailHoverMarker) { detailHoverMarker.remove(); detailHoverMarker = null; }
+          return;
+        }
+        const lngLat = [coord[0], coord[1]];
+        if (!detailHoverMarker) {
+          const el = document.createElement('div');
+          el.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #1a1a1a;pointer-events:none;';
+          detailHoverMarker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(detailMap);
+        } else {
+          detailHoverMarker.setLngLat(lngLat);
+        }
+      }
+    );
+  });
+
+  // Name edit
+  routeDetailNameEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); routeDetailNameEl.blur(); }
+  });
+  routeDetailNameEl.addEventListener('blur', async () => {
+    const newName = routeDetailNameEl.textContent.trim();
+    if (newName && newName !== currentDetailRoute.name) {
+      try {
+        await renameRoute(currentDetailRoute.id, newName);
+        currentDetailRoute.name = newName;
+      } catch (err) {
+        console.error('Rename failed:', err);
+        routeDetailNameEl.textContent = currentDetailRoute.name;
+      }
+    }
+  });
+}
+
+function closeRouteDetail() {
+  routeDetailViewEl.classList.remove('open');
+  if (detailHoverMarker) { detailHoverMarker.remove(); detailHoverMarker = null; }
+  if (detailMap) { detailMap.remove(); detailMap = null; }
+  currentDetailRoute = null;
+}
+
+routeDetailBackEl.addEventListener('click', closeRouteDetail);
+
+routeDetailEditEl.addEventListener('click', () => {
+  if (!currentDetailRoute) return;
+  closeRouteDetail();
+  closeMyRoutes();
+  loadRouteOntoMap(currentDetailRoute);
 });
