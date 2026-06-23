@@ -118,10 +118,11 @@ getCurrentUser().then(user => {
     const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
+    function initMap(center) {
     const map = new maplibregl.Map({
       container: 'map',
       style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: [-75.6972, 45.4215],
+      center: center,
       zoom: 11,
       pitch: 0,
       maxPitch: 0,
@@ -256,12 +257,6 @@ getCurrentUser().then(user => {
         sampleAndRecolor();
         fetchWindData();
         stackLeftPanels();
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 11 }),
-            () => {}
-          );
-        }
       });
 
       map.on('moveend', scheduleRecolor);
@@ -2004,3 +1999,34 @@ routeDetailEditEl.addEventListener('click', () => {
   closeMyRoutes();
   loadRouteOntoMap(routeToLoad);
 });
+
+    } // end initMap
+
+    if (navigator.geolocation) {
+      let resolved = false;
+      const fallbackTimer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          initMap([-75.6972, 45.4215]);
+        }
+      }, 3000);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(fallbackTimer);
+            initMap([pos.coords.longitude, pos.coords.latitude]);
+          }
+        },
+        () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(fallbackTimer);
+            initMap([-75.6972, 45.4215]);
+          }
+        },
+        { timeout: 3000, maximumAge: 60000 }
+      );
+    } else {
+      initMap([-75.6972, 45.4215]);
+    }
