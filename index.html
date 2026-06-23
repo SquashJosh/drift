@@ -30,6 +30,7 @@
         </svg>
       </button>
     </div>
+    <button id="myRoutesBtn" type="button">My Routes</button>
     <div id="readout"><b id="elev">&mdash;</b></div>
   </div>
   <div id="map"></div>
@@ -95,6 +96,34 @@
   <div id="elevationProfile">
     <div id="profileStats"></div>
     <svg id="profileSvg" preserveAspectRatio="none"></svg>
+  </div>
+
+  <!-- MY ROUTES VIEW -->
+  <div id="myRoutesView">
+    <div id="myRoutesHeader">
+      <button type="button" id="myRoutesBack">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <path d="M11 4 L5 9 L11 14"/>
+        </svg>
+        Map
+      </button>
+      <span id="myRoutesTitle">My Routes</span>
+      <button type="button" id="myRoutesSignOut">Sign out</button>
+    </div>
+    <div id="myRoutesBody">
+      <div id="myRoutesLoading">Loading…</div>
+      <div id="myRoutesEmpty" style="display:none">
+        <div>No saved routes yet.</div>
+        <div>Build a route on the map and hit Save.</div>
+      </div>
+      <div id="myRoutesSignedOut" style="display:none">
+        <div>Sign in to see your saved routes.</div>
+        <input type="email" id="myRoutesEmail" placeholder="your@email.com" autocomplete="email" />
+        <button type="button" id="myRoutesSendBtn">Send sign-in link</button>
+        <div id="myRoutesAuthMsg"></div>
+      </div>
+      <div id="myRoutesGrid"></div>
+    </div>
   </div>
 
   <div id="authModal">

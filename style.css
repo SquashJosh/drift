@@ -273,6 +273,134 @@
       #routeControls { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; justify-content: center; }
     }
 
+/* MY ROUTES */
+#myRoutesBtn {
+  background: transparent; border: none; cursor: pointer;
+  font-family: var(--ui); font-size: 12px; letter-spacing: 0.10em;
+  text-transform: uppercase; color: var(--ink-dim);
+  padding: 4px 8px; border-radius: 4px;
+  border: 1px solid var(--hair);
+  transition: color 0.15s, border-color 0.15s;
+}
+#myRoutesBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+#myRoutesView {
+  position: fixed; inset: 0; z-index: 50;
+  background: #0a0d0c;
+  display: none; flex-direction: column;
+  font-family: var(--ui);
+}
+#myRoutesView.open { display: flex; }
+
+#myRoutesHeader {
+  height: 48px; flex-shrink: 0;
+  background: var(--panel);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--hair);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+}
+#myRoutesBack {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: none; cursor: pointer;
+  font-family: var(--ui); font-size: 12px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-dim);
+  padding: 0; transition: color 0.15s;
+}
+#myRoutesBack:hover { color: var(--ink); }
+#myRoutesTitle {
+  font-size: 13px; font-weight: 500; color: var(--ink);
+  letter-spacing: 0.20em; text-transform: uppercase;
+}
+#myRoutesSignOut {
+  background: transparent; border: none; cursor: pointer;
+  font-family: var(--ui); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-dim);
+  padding: 0; transition: color 0.15s;
+}
+#myRoutesSignOut:hover { color: var(--ink); }
+
+#myRoutesBody {
+  flex: 1; overflow-y: auto;
+  padding: 24px 20px;
+  display: flex; flex-direction: column;
+}
+#myRoutesLoading {
+  color: var(--ink-dim); font-size: 13px; padding: 40px 0; text-align: center;
+}
+#myRoutesEmpty {
+  color: var(--ink-dim); font-size: 13px; padding: 40px 0; text-align: center;
+  display: flex; flex-direction: column; gap: 6px;
+}
+#myRoutesSignedOut {
+  display: flex; flex-direction: column; gap: 12px;
+  max-width: 320px; margin: 40px auto; color: var(--ink-dim); font-size: 13px;
+}
+#myRoutesEmail {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+  padding: 10px 12px; font-family: var(--ui); font-size: 13px;
+  color: var(--ink); outline: none; width: 100%;
+}
+#myRoutesEmail:focus { border-color: rgba(255,255,255,0.3); }
+#myRoutesSendBtn {
+  background: var(--ink); color: #0a0d0c;
+  border: none; border-radius: 6px; padding: 10px 12px;
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s;
+}
+#myRoutesSendBtn:hover { opacity: 0.85; }
+#myRoutesAuthMsg { font-size: 12px; min-height: 16px; }
+
+#myRoutesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.route-card {
+  background: var(--panel);
+  border: 1px solid var(--hair); border-radius: 8px;
+  padding: 16px; cursor: pointer;
+  transition: border-color 0.15s;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.route-card:hover { border-color: rgba(255,255,255,0.25); }
+.route-card-name {
+  font-size: 14px; font-weight: 500; color: var(--ink);
+  cursor: text; outline: none; border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.route-card-name:focus { border-bottom-color: var(--ink-dim); }
+.route-card-stats {
+  font-size: 12px; color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  display: flex; gap: 12px;
+}
+.route-card-date {
+  font-size: 11px; color: var(--ink-dim); opacity: 0.6;
+}
+.route-card-actions {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 4px;
+}
+.route-card-load {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-dim); background: transparent;
+  border: 1px solid var(--hair); border-radius: 4px;
+  padding: 4px 10px; cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+.route-card-load:hover { color: var(--ink); border-color: var(--ink-dim); }
+.route-card-delete {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-dim); background: transparent; border: none;
+  padding: 4px; cursor: pointer; transition: color 0.15s;
+}
+.route-card-delete:hover { color: #e06c6c; }
+
+@media (max-width: 600px) {
+  #myRoutesGrid { grid-template-columns: 1fr; }
+}
+
 #authModal {
   position: fixed; inset: 0; z-index: 100;
   background: rgba(0,0,0,0.55);

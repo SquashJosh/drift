@@ -1640,3 +1640,198 @@ clearRoute = function() {
   activeRouteId = null;
   updateSaveButtonState();
 };
+
+// ---------------------------------------------------------------
+// MY ROUTES VIEW
+// ---------------------------------------------------------------
+const myRoutesViewEl = document.getElementById('myRoutesView');
+const myRoutesBtnEl = document.getElementById('myRoutesBtn');
+const myRoutesBackEl = document.getElementById('myRoutesBack');
+const myRoutesSignOutEl = document.getElementById('myRoutesSignOut');
+const myRoutesLoadingEl = document.getElementById('myRoutesLoading');
+const myRoutesEmptyEl = document.getElementById('myRoutesEmpty');
+const myRoutesSignedOutEl = document.getElementById('myRoutesSignedOut');
+const myRoutesGridEl = document.getElementById('myRoutesGrid');
+const myRoutesAuthMsgEl = document.getElementById('myRoutesAuthMsg');
+const myRoutesSendBtnEl = document.getElementById('myRoutesSendBtn');
+const myRoutesEmailEl = document.getElementById('myRoutesEmail');
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function openMyRoutes() {
+  myRoutesViewEl.classList.add('open');
+  loadMyRoutes();
+}
+
+function closeMyRoutes() {
+  myRoutesViewEl.classList.remove('open');
+}
+
+async function loadMyRoutes() {
+  myRoutesLoadingEl.style.display = 'block';
+  myRoutesEmptyEl.style.display = 'none';
+  myRoutesSignedOutEl.style.display = 'none';
+  myRoutesGridEl.innerHTML = '';
+
+  if (!currentUser) {
+    myRoutesLoadingEl.style.display = 'none';
+    myRoutesSignedOutEl.style.display = 'flex';
+    myRoutesSignOutEl.style.display = 'none';
+    return;
+  }
+
+  myRoutesSignOutEl.style.display = '';
+
+  try {
+    const routes = await listRoutes();
+    myRoutesLoadingEl.style.display = 'none';
+
+    if (!routes || routes.length === 0) {
+      myRoutesEmptyEl.style.display = 'flex';
+      return;
+    }
+
+    routes.forEach(route => {
+      const card = document.createElement('div');
+      card.className = 'route-card';
+
+      const name = document.createElement('div');
+      name.className = 'route-card-name';
+      name.textContent = route.name;
+      name.contentEditable = true;
+      name.spellcheck = false;
+      name.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); name.blur(); }
+      });
+      name.addEventListener('blur', async () => {
+        const newName = name.textContent.trim();
+        if (newName && newName !== route.name) {
+          try {
+            await renameRoute(route.id, newName);
+            route.name = newName;
+          } catch (err) {
+            console.error('Rename failed:', err);
+            name.textContent = route.name;
+          }
+        }
+      });
+      // Stop card click from firing when editing name
+      name.addEventListener('click', (e) => e.stopPropagation());
+
+      const stats = document.createElement('div');
+      stats.className = 'route-card-stats';
+      stats.innerHTML =
+        '<span>' + (route.distance_km || 0) + ' km</span>' +
+        '<span>↑ ' + (route.gain_m || 0) + ' m</span>';
+
+      const date = document.createElement('div');
+      date.className = 'route-card-date';
+      date.textContent = formatDate(route.created_at);
+
+      const actions = document.createElement('div');
+      actions.className = 'route-card-actions';
+
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'route-card-load';
+      loadBtn.textContent = 'Open on map';
+      loadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        loadRouteOntoMap(route);
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'route-card-delete';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete "' + route.name + '"?')) return;
+        try {
+          await deleteRoute(route.id);
+          card.remove();
+          if (myRoutesGridEl.children.length === 0) {
+            myRoutesEmptyEl.style.display = 'flex';
+          }
+        } catch (err) {
+          console.error('Delete failed:', err);
+        }
+      });
+
+      actions.appendChild(loadBtn);
+      actions.appendChild(deleteBtn);
+      card.appendChild(name);
+      card.appendChild(stats);
+      card.appendChild(date);
+      card.appendChild(actions);
+      myRoutesGridEl.appendChild(card);
+    });
+
+  } catch (err) {
+    console.error('Failed to load routes:', err);
+    myRoutesLoadingEl.style.display = 'none';
+    myRoutesLoadingEl.textContent = 'Failed to load routes.';
+    myRoutesLoadingEl.style.display = 'block';
+  }
+}
+
+async function loadRouteOntoMap(route) {
+  closeMyRoutes();
+  clearRoute();
+  enterRouteMode();
+  activeRouteId = route.id;
+
+  const restored = route.waypoints;
+  if (!restored || restored.length < 2) return;
+
+  (async () => {
+    for (let i = 0; i < restored.length; i++) {
+      waypoints.push(restored[i]);
+      initRouteMapLayers();
+      drawWaypoints();
+      if (i > 0) {
+        try {
+          const leg = await fetchLeg(restored[i - 1], restored[i]);
+          legs.push(leg);
+          drawRoute();
+          drawElevationProfile();
+          document.getElementById('exportGpxBtn').disabled = false;
+          updateSaveButtonState();
+        } catch (err) {
+          console.error('Leg reconstruction failed:', err);
+        }
+      }
+    }
+  })();
+}
+
+myRoutesSendBtnEl.addEventListener('click', async () => {
+  const email = myRoutesEmailEl.value.trim();
+  if (!email) {
+    myRoutesAuthMsgEl.textContent = 'Please enter your email.';
+    return;
+  }
+  myRoutesSendBtnEl.disabled = true;
+  myRoutesSendBtnEl.textContent = 'Sending…';
+  try {
+    await signIn(email);
+    myRoutesAuthMsgEl.textContent = 'Check your email for a sign-in link.';
+    myRoutesAuthMsgEl.style.color = '#6ec97a';
+    myRoutesSendBtnEl.textContent = 'Sent';
+  } catch (err) {
+    myRoutesAuthMsgEl.textContent = 'Something went wrong. Try again.';
+    myRoutesSendBtnEl.disabled = false;
+    myRoutesSendBtnEl.textContent = 'Send sign-in link';
+  }
+});
+
+myRoutesBtnEl.addEventListener('click', openMyRoutes);
+myRoutesBackEl.addEventListener('click', closeMyRoutes);
+
+myRoutesSignOutEl.addEventListener('click', async () => {
+  await signOut();
+  currentUser = null;
+  updateSaveButtonState();
+  loadMyRoutes();
+});
