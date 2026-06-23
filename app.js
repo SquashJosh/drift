@@ -11,6 +11,41 @@ onAuthChange((user) => {
 getCurrentUser().then(user => {
   currentUser = user;
   updateSaveButtonState();
+  // Restore any waypoints saved before the magic link redirect
+  const pending = sessionStorage.getItem('drift_pending_waypoints');
+  if (pending) {
+    sessionStorage.removeItem('drift_pending_waypoints');
+    try {
+      const restored = JSON.parse(pending);
+      if (restored.length > 0 && user) {
+        // Enter route mode and rebuild the route
+        enterRouteMode();
+        (async () => {
+          for (let i = 0; i < restored.length; i++) {
+            waypoints.push(restored[i]);
+            initRouteMapLayers();
+            drawWaypoints();
+            if (i > 0) {
+              try {
+                const leg = await fetchLeg(restored[i-1], restored[i]);
+                legs.push(leg);
+                drawRoute();
+                drawElevationProfile();
+                document.getElementById('exportGpxBtn').disabled = false;
+                updateSaveButtonState();
+              } catch (err) {
+                console.error('Route restore leg failed:', err);
+              }
+            }
+          }
+          // Prompt to save now that we're signed in
+          await doSaveRoute();
+        })();
+      }
+    } catch(e) {
+      console.error('Route restore failed:', e);
+    }
+  }
 });
 
     let clickMode = 'forecast'; // 'forecast' | 'route'
@@ -1459,6 +1494,13 @@ authModalEl.addEventListener('click', (e) => {
   if (e.target === authModalEl) closeAuthModal();
 });
 
+// Before Supabase redirects away, snapshot waypoints to sessionStorage
+function snapshotRouteForRedirect() {
+  if (waypoints.length > 0) {
+    sessionStorage.setItem('drift_pending_waypoints', JSON.stringify(waypoints));
+  }
+}
+
 authSendBtn.addEventListener('click', async () => {
   const email = authEmailEl.value.trim();
   if (!email) {
@@ -1471,6 +1513,7 @@ authSendBtn.addEventListener('click', async () => {
   authMessageEl.textContent = '';
   authMessageEl.className = '';
   try {
+    snapshotRouteForRedirect();
     await signIn(email);
     authMessageEl.textContent = 'Check your email — we sent you a sign-in link.';
     authMessageEl.className = 'success';
