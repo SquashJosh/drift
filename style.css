@@ -273,6 +273,59 @@
       #routeControls { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; justify-content: center; }
     }
 
+#authModal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.55);
+  display: none; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#authModal.open { display: flex; }
+#authCard {
+  background: rgba(10,12,11,0.92);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 28px 24px;
+  width: 320px;
+  display: flex; flex-direction: column; gap: 12px;
+  font-family: var(--ui);
+}
+#authTitle {
+  font-size: 15px; font-weight: 500; color: var(--ink);
+  letter-spacing: 0.02em;
+}
+#authSubtitle {
+  font-size: 12px; color: var(--ink-dim); line-height: 1.5;
+}
+#authEmail {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--ui); font-size: 13px;
+  color: var(--ink); outline: none; width: 100%;
+}
+#authEmail:focus { border-color: rgba(255,255,255,0.3); }
+#authSendBtn {
+  background: var(--ink); color: #0a0d0c;
+  border: none; border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s;
+}
+#authSendBtn:hover { opacity: 0.85; }
+#authSendBtn:disabled { opacity: 0.4; cursor: default; }
+#authMessage {
+  font-size: 12px; color: var(--ink-dim); line-height: 1.5; min-height: 16px;
+}
+#authMessage.success { color: #6ec97a; }
+#authMessage.error { color: #e06c6c; }
+#authCloseBtn {
+  background: transparent; border: none;
+  font-family: var(--ui); font-size: 12px;
+  color: var(--ink-dim); cursor: pointer; padding: 0; text-align: left;
+}
+#authCloseBtn:hover { color: var(--ink); }
+
     .drift-pin {
       width: 14px;
       height: 14px;

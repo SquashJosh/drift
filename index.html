@@ -82,11 +82,30 @@
       </svg>
       GPX
     </button>
+    <button type="button" id="saveRouteBtn" title="Save route" disabled>
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+        <path d="M3 3 h9 l3 3 v9 a1 1 0 0 1 -1 1 H4 a1 1 0 0 1 -1 -1 Z"/>
+        <rect x="6" y="3" width="5" height="4" rx="0.5"/>
+        <rect x="5" y="10" width="8" height="5" rx="0.5"/>
+      </svg>
+      Save
+    </button>
   </div>
 
   <div id="elevationProfile">
     <div id="profileStats"></div>
     <svg id="profileSvg" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div id="authModal">
+    <div id="authCard">
+      <div id="authTitle">Sign in to save routes</div>
+      <div id="authSubtitle">We'll send a link to your email. Click it and you're in — no password needed.</div>
+      <input type="email" id="authEmail" placeholder="your@email.com" autocomplete="email" />
+      <button type="button" id="authSendBtn">Send link</button>
+      <div id="authMessage"></div>
+      <button type="button" id="authCloseBtn">Cancel</button>
+    </div>
   </div>
 
   <div id="pointForecast">

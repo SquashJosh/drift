@@ -1,3 +1,18 @@
+// ---------------------------------------------------------------
+// AUTH STATE
+// ---------------------------------------------------------------
+let currentUser = null;
+
+onAuthChange((user) => {
+  currentUser = user;
+  updateSaveButtonState();
+});
+
+getCurrentUser().then(user => {
+  currentUser = user;
+  updateSaveButtonState();
+});
+
     let clickMode = 'forecast'; // 'forecast' | 'route'
     const ROUTE_COLOUR = '#1a1a1a';     // route line on map
     const PROFILE_COLOUR = '#f0a500';   // elevation profile UI
@@ -921,7 +936,10 @@
       drawRoute();
       drawWaypoints();
       drawElevationProfile();
-      if (legs.length === 0) document.getElementById('exportGpxBtn').disabled = true;
+      if (legs.length === 0) {
+        document.getElementById('exportGpxBtn').disabled = true;
+        updateSaveButtonState();
+      }
     });
 
     document.getElementById('clearRouteBtn').addEventListener('click', clearRoute);
@@ -1364,6 +1382,7 @@
         drawRoute();
         drawElevationProfile();
         document.getElementById('exportGpxBtn').disabled = false;
+        updateSaveButtonState();
       } catch (err) {
         console.error('Route leg failed:', err);
         // Roll back the waypoint we just added
@@ -1410,3 +1429,171 @@
       if (clickMode === 'forecast') handleForecastClick(e);
       else if (clickMode === 'route') handleRouteClick(e);
     });
+
+// ---------------------------------------------------------------
+// AUTH MODAL
+// ---------------------------------------------------------------
+const authModalEl = document.getElementById('authModal');
+const authEmailEl = document.getElementById('authEmail');
+const authSendBtn = document.getElementById('authSendBtn');
+const authMessageEl = document.getElementById('authMessage');
+const authCloseBtn = document.getElementById('authCloseBtn');
+
+function openAuthModal() {
+  authEmailEl.value = '';
+  authMessageEl.textContent = '';
+  authMessageEl.className = '';
+  authSendBtn.disabled = false;
+  authSendBtn.textContent = 'Send link';
+  authModalEl.classList.add('open');
+  setTimeout(() => authEmailEl.focus(), 50);
+}
+
+function closeAuthModal() {
+  authModalEl.classList.remove('open');
+}
+
+authCloseBtn.addEventListener('click', closeAuthModal);
+
+authModalEl.addEventListener('click', (e) => {
+  if (e.target === authModalEl) closeAuthModal();
+});
+
+authSendBtn.addEventListener('click', async () => {
+  const email = authEmailEl.value.trim();
+  if (!email) {
+    authMessageEl.textContent = 'Please enter your email address.';
+    authMessageEl.className = 'error';
+    return;
+  }
+  authSendBtn.disabled = true;
+  authSendBtn.textContent = 'Sending…';
+  authMessageEl.textContent = '';
+  authMessageEl.className = '';
+  try {
+    await signIn(email);
+    authMessageEl.textContent = 'Check your email — we sent you a sign-in link.';
+    authMessageEl.className = 'success';
+    authSendBtn.textContent = 'Sent';
+  } catch (err) {
+    console.error('Sign in error:', err);
+    authMessageEl.textContent = 'Something went wrong. Please try again.';
+    authMessageEl.className = 'error';
+    authSendBtn.disabled = false;
+    authSendBtn.textContent = 'Send link';
+  }
+});
+
+// ---------------------------------------------------------------
+// SAVE ROUTE
+// ---------------------------------------------------------------
+const saveRouteBtnEl = document.getElementById('saveRouteBtn');
+let activeRouteId = null; // id of the route currently loaded from My Routes, null if fresh
+
+function updateSaveButtonState() {
+  if (!saveRouteBtnEl) return;
+  saveRouteBtnEl.disabled = legs.length === 0;
+}
+
+function generateRouteName() {
+  const now = new Date();
+  const month = now.toLocaleDateString(undefined, { month: 'short' });
+  const day = now.getDate();
+  const dist = legs.length > 0 ? (() => {
+    let d = 0, prev = null;
+    for (const leg of legs) {
+      const f = leg.features[0];
+      if (!f) continue;
+      for (const c of f.geometry.coordinates) {
+        if (prev) d += haversine(prev, c);
+        prev = c;
+      }
+    }
+    return d.toFixed(1);
+  })() : '0';
+  return 'Route — ' + month + ' ' + day + ', ' + dist + ' km';
+}
+
+async function doSaveRoute() {
+  const dist = (() => {
+    let d = 0, prev = null;
+    for (const leg of legs) {
+      const f = leg.features[0];
+      if (!f) continue;
+      for (const c of f.geometry.coordinates) {
+        if (prev) d += haversine(prev, c);
+        prev = c;
+      }
+    }
+    return parseFloat(d.toFixed(2));
+  })();
+
+  const gain = (() => {
+    let g = 0, prevEle = null;
+    for (const leg of legs) {
+      const f = leg.features[0];
+      if (!f) continue;
+      for (const c of f.geometry.coordinates) {
+        const ele = c[2] ?? 0;
+        if (prevEle !== null && ele > prevEle) g += ele - prevEle;
+        prevEle = ele;
+      }
+    }
+    return Math.round(g);
+  })();
+
+  const routeObject = {
+    name: generateRouteName(),
+    waypoints,
+    distance_km: dist,
+    gain_m: gain,
+  };
+
+  saveRouteBtnEl.disabled = true;
+  saveRouteBtnEl.textContent = 'Saving…';
+
+  try {
+    if (activeRouteId) {
+      // Existing route — offer save over or save as new
+      const choice = confirm('Save over existing route, or save as a new route?\n\nOK = Save over\nCancel = Save as new');
+      if (choice) {
+        await updateRoute(activeRouteId, {
+          waypoints: routeObject.waypoints,
+          distance_km: routeObject.distance_km,
+          gain_m: routeObject.gain_m,
+        });
+      } else {
+        const saved = await saveRoute(routeObject);
+        activeRouteId = saved.id;
+      }
+    } else {
+      const saved = await saveRoute(routeObject);
+      activeRouteId = saved.id;
+    }
+    saveRouteBtnEl.textContent = 'Saved ✓';
+    setTimeout(() => {
+      saveRouteBtnEl.textContent = 'Save';
+      saveRouteBtnEl.disabled = legs.length === 0;
+    }, 2000);
+  } catch (err) {
+    console.error('Save failed:', err);
+    saveRouteBtnEl.textContent = 'Save';
+    saveRouteBtnEl.disabled = false;
+  }
+}
+
+saveRouteBtnEl.addEventListener('click', async () => {
+  if (!currentUser) {
+    openAuthModal();
+    return;
+  }
+  await doSaveRoute();
+});
+
+// Reset activeRouteId when route is cleared
+const _originalClearRoute = clearRoute;
+clearRoute = function() {
+  _originalClearRoute();
+  activeRouteId = null;
+  updateSaveButtonState();
+};
