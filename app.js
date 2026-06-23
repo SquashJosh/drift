@@ -1782,7 +1782,10 @@ async function loadRouteOntoMap(route) {
   enterRouteMode();
   activeRouteId = route.id;
 
-  const restored = route.waypoints;
+  const restored = typeof route.waypoints === 'string'
+    ? JSON.parse(route.waypoints)
+    : route.waypoints;
+  console.log('waypoints from Supabase:', restored);
   if (!restored || restored.length < 2) return;
 
   (async () => {
