@@ -1786,6 +1786,7 @@ async function loadRouteOntoMap(route) {
   if (!restored || restored.length < 2) return;
 
   (async () => {
+    console.log('Reconstructing route, waypoints:', restored);
     for (let i = 0; i < restored.length; i++) {
       waypoints.push(restored[i]);
       initRouteMapLayers();
@@ -1799,7 +1800,7 @@ async function loadRouteOntoMap(route) {
           document.getElementById('exportGpxBtn').disabled = false;
           updateSaveButtonState();
         } catch (err) {
-          console.error('Leg reconstruction failed:', err);
+          console.error('Leg reconstruction failed:', err, 'from:', restored[i-1], 'to:', restored[i]);
         }
       }
     }
