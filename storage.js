@@ -105,3 +105,5 @@ async function deleteRoute(id) {
 async function renameRoute(id, name) {
   return updateRoute(id, { name });
 }
+
+window.getCurrentUser = getCurrentUser;
