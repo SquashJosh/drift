@@ -433,7 +433,7 @@
       return RAMP_RGB.map(rgb => {
         const [r, g, b] = rgb.split(',').map(Number);
         const grey = r * 0.299 + g * 0.587 + b * 0.114;
-        const mix = 0.45;
+        const mix = 1.0;
         return [
           Math.round(r + (grey - r) * mix),
           Math.round(g + (grey - g) * mix),
@@ -805,7 +805,7 @@
 
     function animate() {
       requestAnimationFrame(animate);
-      if (pauseAnimation || !windGrid) return;
+      if (pauseAnimation || !windGrid || !windLayer.visible) return;
 
       // 9 map.project() calls per frame instead of 300 map.unproject() calls
       currentScreenGrid = windGrid.points
@@ -1036,7 +1036,9 @@
       const center = map.getCenter();
       if (lastFetchCenter) {
         const moved = Math.hypot(center.lng - lastFetchCenter.lng, center.lat - lastFetchCenter.lat);
-        if (moved < 0.3) return;
+        const bounds = map.getBounds();
+        const viewportSpan = bounds.getEast() - bounds.getWest();
+        if (moved < viewportSpan * 0.15) return;
       }
 
       const bounds = map.getBounds();
