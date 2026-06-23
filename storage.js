@@ -1,8 +1,8 @@
 // storage.js — all Supabase interaction lives here
 // The rest of the app calls these functions and never imports Supabase directly.
 
-const SUPABASE_URL = https://iehieflvphilkxnecint.supabase.co/rest/v1/;
-const SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllaGllZmx2cGhpbGt4bmVjaW50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTM3NzQsImV4cCI6MjA5Nzc4OTc3NH0.kTYMTdI74Ti3AhMJqOPRnfmaWkJGMA93nnGPHAaVH9g;
+const SUPABASE_URL = 'https://iehieflvphilkxnecint.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllaGllZmx2cGhpbGt4bmVjaW50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTM3NzQsImV4cCI6MjA5Nzc4OTc3NH0.kTYMTdI74Ti3AhMJqOPRnfmaWkJGMA93nnGPHAaVH9g;'
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
