@@ -124,7 +124,6 @@ getCurrentUser().then(user => {
     const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
-    function initMap() {
     const DEFAULT_CENTER = [-75.6972, 45.4215];
     let initialCenter = DEFAULT_CENTER;
     let hadCachedCenter = false;
@@ -251,6 +250,9 @@ getCurrentUser().then(user => {
       debounceTimer = setTimeout(sampleAndRecolor, 150);
     }
 
+    let cyclingLoaded = false;
+    let cyclingVisible = false;
+
     function updateLegendBar() {
       const ramp = currentRampRGB(cyclingVisible);
       const stops = ramp.map((rgb, i) => `rgb(${rgb}) ${(i / (ramp.length - 1) * 100).toFixed(1)}%`);
@@ -310,9 +312,6 @@ getCurrentUser().then(user => {
     // ---------------------------------------------------------------
     // LAYERS
     // ---------------------------------------------------------------
-    let cyclingLoaded = false;
-    let cyclingVisible = false;
-
     const LAYERS = [
       { id: 'elevation', label: 'Elevation', colour: '#f5c842', visible: true },
       { id: 'wind', label: 'Wind', colour: '#3d8cb5', visible: true },
@@ -2041,6 +2040,3 @@ routeDetailEditEl.addEventListener('click', () => {
   loadRouteOntoMap(routeToLoad);
 });
 
-    } // end initMap
-
-    initMap();
