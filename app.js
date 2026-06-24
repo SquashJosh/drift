@@ -238,7 +238,7 @@ getCurrentUser().then(user => {
         }
       }
       if (samples.length < 40) return; // DEM not ready yet; next idle/moveend retries
-      const min = Math.min(...samples);
+      const min = Math.max(0, Math.min(...samples));
       const max = Math.max(...samples);
       updateColorRelief(min, max);
       updateLegend(min, max);
