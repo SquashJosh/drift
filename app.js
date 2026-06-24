@@ -251,10 +251,12 @@ getCurrentUser().then(user => {
       debounceTimer = setTimeout(sampleAndRecolor, 150);
     }
 
-    (function buildLegendBar() {
-      const stops = RAMP_RGB.map((rgb, i) => `rgb(${rgb}) ${(i / (RAMP_RGB.length - 1) * 100).toFixed(1)}%`);
+    function updateLegendBar() {
+      const ramp = currentRampRGB(cyclingVisible);
+      const stops = ramp.map((rgb, i) => `rgb(${rgb}) ${(i / (ramp.length - 1) * 100).toFixed(1)}%`);
       document.getElementById('legendBar').style.background = `linear-gradient(to top, ${stops.join(', ')})`;
-    })();
+    }
+    updateLegendBar();
 
     map.on('error', (e) => console.error('MapLibre:', e && e.error ? e.error : e));
 
@@ -867,6 +869,7 @@ getCurrentUser().then(user => {
           map.setLayoutProperty('cycling-infra-layer', 'visibility', layer.visible ? 'visible' : 'none');
         }
         updateCyclingLegend(layer.visible);
+        updateLegendBar();
         stackLeftPanels();
       }
     }
