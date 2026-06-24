@@ -82,17 +82,6 @@ async function listRoutes() {
   return data;
 }
 
-async function getRoute(id) {
-  const { data, error } = await db
-    .from('routes')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
 async function deleteRoute(id) {
   const { error } = await db
     .from('routes')
@@ -105,5 +94,3 @@ async function deleteRoute(id) {
 async function renameRoute(id, name) {
   return updateRoute(id, { name });
 }
-
-window.getCurrentUser = getCurrentUser;

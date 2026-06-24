@@ -21,22 +21,27 @@ getCurrentUser().then(user => {
         // Enter route mode and rebuild the route
         enterRouteMode();
         (async () => {
-          for (let i = 0; i < restored.length; i++) {
-            waypoints.push(restored[i]);
-            initRouteMapLayers();
-            drawWaypoints();
-            if (i > 0) {
-              try {
-                const leg = await fetchLeg(restored[i-1], restored[i]);
-                legs.push(leg);
-                drawRoute();
-                drawElevationProfile();
-                document.getElementById('exportGpxBtn').disabled = false;
-                updateSaveButtonState();
-              } catch (err) {
-                console.error('Route restore leg failed:', err);
+          reconstructing = true;
+          try {
+            for (let i = 0; i < restored.length; i++) {
+              waypoints.push(restored[i]);
+              initRouteMapLayers();
+              drawWaypoints();
+              if (i > 0) {
+                try {
+                  const leg = await fetchLeg(restored[i-1], restored[i]);
+                  legs.push(leg);
+                  drawRoute();
+                  drawElevationProfile();
+                  document.getElementById('exportGpxBtn').disabled = false;
+                  updateSaveButtonState();
+                } catch (err) {
+                  console.error('Route restore leg failed:', err);
+                }
               }
             }
+          } finally {
+            reconstructing = false;
           }
           // Prompt to save now that we're signed in
           await doSaveRoute();
@@ -53,6 +58,7 @@ getCurrentUser().then(user => {
     const PROFILE_COLOUR = '#f0a500';   // elevation profile UI
     let waypoints = [];  // [[lng,lat], ...]
     let legs = [];       // GeoJSON FeatureCollections from BRouter, legs.length === waypoints.length - 1
+    let reconstructing = false;
     let routeLayersInitialised = false;
 
     // Green -> yellow -> orange -> red elevation ramp. Map paint uses these
@@ -118,11 +124,25 @@ getCurrentUser().then(user => {
     const elevationLayerId = 'elevation-tint';
     let beforeLayerId; // first symbol layer in the liberty style
 
-    function initMap(center) {
+    function initMap() {
+    const DEFAULT_CENTER = [-75.6972, 45.4215];
+    let initialCenter = DEFAULT_CENTER;
+    let hadCachedCenter = false;
+    try {
+      const cached = localStorage.getItem('drift_last_center');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length === 2 &&
+            typeof parsed[0] === 'number' && typeof parsed[1] === 'number') {
+          initialCenter = parsed;
+          hadCachedCenter = true;
+        }
+      }
+    } catch (e) {}
     const map = new maplibregl.Map({
       container: 'map',
       style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: center,
+      center: initialCenter,
       zoom: 11,
       pitch: 0,
       maxPitch: 0,
@@ -257,6 +277,17 @@ getCurrentUser().then(user => {
         sampleAndRecolor();
         fetchWindData();
         stackLeftPanels();
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const c = [pos.coords.longitude, pos.coords.latitude];
+              try { localStorage.setItem('drift_last_center', JSON.stringify(c)); } catch (e) {}
+              if (!hadCachedCenter) map.jumpTo({ center: c, zoom: 11 });
+            },
+            () => {},
+            { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+          );
+        }
       });
 
       map.on('moveend', scheduleRecolor);
@@ -1303,7 +1334,7 @@ getCurrentUser().then(user => {
         '<b>↑ ' + Math.round(totalGain) + ' m</b>';
 
       // Hover
-      svgEl.addEventListener('mousemove', (e) => {
+      svgEl.onmousemove = (e) => {
         const rect = svgEl.getBoundingClientRect();
         const cssX = e.clientX - rect.left;
         const frac = Math.max(0, Math.min(1, cssX / rect.width));
@@ -1325,13 +1356,13 @@ getCurrentUser().then(user => {
         }
 
         if (onHover) onHover(nearest.coord);
-      });
+      };
 
-      svgEl.addEventListener('mouseleave', () => {
+      svgEl.onmouseleave = () => {
         const cursorEl = document.getElementById('profCursor_' + svgEl.id);
         if (cursorEl) cursorEl.setAttribute('display', 'none');
         if (onHover) onHover(null);
-      });
+      };
 
       return { allCoords, totalDist, totalGain, minEle, maxEle };
     }
@@ -1413,6 +1444,7 @@ getCurrentUser().then(user => {
     }
 
     async function handleRouteClick(e) {
+      if (reconstructing) return;
       const { lng, lat } = e.lngLat;
       waypoints.push([lng, lat]);
       initRouteMapLayers();
@@ -1794,23 +1826,28 @@ async function loadRouteOntoMap(route) {
   if (!restored || restored.length < 2) return;
 
   (async () => {
-    console.log('Reconstructing route, waypoints:', restored);
-    for (let i = 0; i < restored.length; i++) {
-      waypoints.push(restored[i]);
-      initRouteMapLayers();
-      drawWaypoints();
-      if (i > 0) {
-        try {
-          const leg = await fetchLeg(restored[i - 1], restored[i]);
-          legs.push(leg);
-          drawRoute();
-          drawElevationProfile();
-          document.getElementById('exportGpxBtn').disabled = false;
-          updateSaveButtonState();
-        } catch (err) {
-          console.error('Leg reconstruction failed:', err, 'from:', restored[i-1], 'to:', restored[i]);
+    reconstructing = true;
+    try {
+      console.log('Reconstructing route, waypoints:', restored);
+      for (let i = 0; i < restored.length; i++) {
+        waypoints.push(restored[i]);
+        initRouteMapLayers();
+        drawWaypoints();
+        if (i > 0) {
+          try {
+            const leg = await fetchLeg(restored[i - 1], restored[i]);
+            legs.push(leg);
+            drawRoute();
+            drawElevationProfile();
+            document.getElementById('exportGpxBtn').disabled = false;
+            updateSaveButtonState();
+          } catch (err) {
+            console.error('Leg reconstruction failed:', err, 'from:', restored[i-1], 'to:', restored[i]);
+          }
         }
       }
+    } finally {
+      reconstructing = false;
     }
   })();
 }
@@ -1965,22 +2002,6 @@ function openRouteDetail(route) {
     );
   });
 
-  // Name edit
-  routeDetailNameEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); routeDetailNameEl.blur(); }
-  });
-  routeDetailNameEl.addEventListener('blur', async () => {
-    const newName = routeDetailNameEl.textContent.trim();
-    if (newName && newName !== currentDetailRoute.name) {
-      try {
-        await renameRoute(currentDetailRoute.id, newName);
-        currentDetailRoute.name = newName;
-      } catch (err) {
-        console.error('Rename failed:', err);
-        routeDetailNameEl.textContent = currentDetailRoute.name;
-      }
-    }
-  });
 }
 
 function closeRouteDetail() {
@@ -1992,6 +2013,23 @@ function closeRouteDetail() {
 
 routeDetailBackEl.addEventListener('click', closeRouteDetail);
 
+routeDetailNameEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); routeDetailNameEl.blur(); }
+});
+routeDetailNameEl.addEventListener('blur', async () => {
+  if (!currentDetailRoute) return;
+  const newName = routeDetailNameEl.textContent.trim();
+  if (newName && newName !== currentDetailRoute.name) {
+    try {
+      await renameRoute(currentDetailRoute.id, newName);
+      currentDetailRoute.name = newName;
+    } catch (err) {
+      console.error('Rename failed:', err);
+      routeDetailNameEl.textContent = currentDetailRoute.name;
+    }
+  }
+});
+
 routeDetailEditEl.addEventListener('click', () => {
   if (!currentDetailRoute) return;
   const routeToLoad = currentDetailRoute;
@@ -2002,31 +2040,4 @@ routeDetailEditEl.addEventListener('click', () => {
 
     } // end initMap
 
-    if (navigator.geolocation) {
-      let resolved = false;
-      const fallbackTimer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          initMap([-75.6972, 45.4215]);
-        }
-      }, 3000);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(fallbackTimer);
-            initMap([pos.coords.longitude, pos.coords.latitude]);
-          }
-        },
-        () => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(fallbackTimer);
-            initMap([-75.6972, 45.4215]);
-          }
-        },
-        { timeout: 3000, maximumAge: 60000 }
-      );
-    } else {
-      initMap([-75.6972, 45.4215]);
-    }
+    initMap();
