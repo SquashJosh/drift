@@ -76,7 +76,7 @@ async function updateRoute(id, changes) {
 async function listRoutes() {
   const { data, error } = await db
     .from('routes')
-    .select('id, name, waypoints, distance_km, gain_m, geometry, created_at')
+    .select('id, name, waypoints, distance_km, gain_m, created_at, geometry')
     .order('created_at', { ascending: false });
 
   if (error) throw error;

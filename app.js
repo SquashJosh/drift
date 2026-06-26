@@ -1838,12 +1838,21 @@ async function loadMyRoutes() {
       card.appendChild(cardBody);
       myRoutesGridEl.appendChild(card);
 
+      const waypts = typeof route.waypoints === 'string'
+        ? JSON.parse(route.waypoints)
+        : (route.waypoints || []);
+      const startCenter = waypts.length > 0
+        ? waypts[Math.floor(waypts.length / 2)]
+        : [-75.6972, 45.4215];
+
       requestAnimationFrame(() => {
         const thumbMap = new maplibregl.Map({
           container: thumbnailDiv,
           style: 'https://tiles.openfreemap.org/styles/liberty',
           interactive: false,
           attributionControl: false,
+          center: startCenter,
+          zoom: 9,
         });
 
         thumbMap.once('load', () => {
@@ -1956,10 +1965,15 @@ function enterViewMode(route) {
 
   const lngs = coords.map(c => c[0]);
   const lats = coords.map(c => c[1]);
-  map.fitBounds([
+  const bounds = [
     [Math.min(...lngs) - 0.005, Math.min(...lats) - 0.005],
     [Math.max(...lngs) + 0.005, Math.max(...lats) + 0.005]
-  ], { padding: 60, duration: 800 });
+  ];
+  if (map.isStyleLoaded()) {
+    map.fitBounds(bounds, { padding: 60, animate: true, duration: 600 });
+  } else {
+    map.once('idle', () => map.fitBounds(bounds, { padding: 60, animate: false }));
+  }
 
   drawWaypoints();
   editRouteBtnEl.style.display = '';
