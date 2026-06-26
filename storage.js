@@ -48,6 +48,7 @@ async function saveRoute(routeObject) {
     waypoints: routeObject.waypoints,
     distance_km: routeObject.distance_km,
     gain_m: routeObject.gain_m,
+    geometry: routeObject.geometry ?? null,
   };
 
   const { data, error } = await db
@@ -75,7 +76,7 @@ async function updateRoute(id, changes) {
 async function listRoutes() {
   const { data, error } = await db
     .from('routes')
-    .select('id, name, waypoints, distance_km, gain_m, created_at')
+    .select('id, name, waypoints, distance_km, gain_m, geometry, created_at')
     .order('created_at', { ascending: false });
 
   if (error) throw error;

@@ -273,132 +273,6 @@
       #routeControls { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; justify-content: center; }
     }
 
-/* ROUTE DETAIL VIEW */
-#routeDetailView {
-  position: fixed; inset: 0; z-index: 60;
-  background: #0a0d0c;
-  display: none; flex-direction: column;
-  font-family: var(--ui);
-}
-#routeDetailView.open { display: flex; }
-
-#routeDetailHeader {
-  height: 48px; flex-shrink: 0;
-  background: var(--panel);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--hair);
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 20px; gap: 16px;
-}
-#routeDetailBack {
-  display: flex; align-items: center; gap: 6px;
-  background: transparent; border: none; cursor: pointer;
-  font-family: var(--ui); font-size: 12px; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--ink-dim);
-  padding: 0; transition: color 0.15s; flex-shrink: 0;
-}
-#routeDetailBack:hover { color: var(--ink); }
-#routeDetailName {
-  flex: 1; font-size: 14px; font-weight: 500; color: var(--ink);
-  outline: none; border-bottom: 1px solid transparent;
-  transition: border-color 0.15s; text-align: center;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-#routeDetailName:focus { border-bottom-color: var(--ink-dim); }
-#routeDetailEdit {
-  background: var(--ink); color: #0a0d0c;
-  border: none; border-radius: 6px;
-  padding: 6px 14px;
-  font-family: var(--ui); font-size: 12px; font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  cursor: pointer; transition: opacity 0.15s; flex-shrink: 0;
-}
-#routeDetailEdit:hover { opacity: 0.85; }
-
-#routeDetailBody {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  overflow: hidden;
-  min-height: 0;
-}
-
-#routeDetailLeft {
-  border-right: 1px solid var(--hair);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 24px 24px;
-  gap: 20px;
-}
-
-#routeDetailTrace {
-  width: 100%;
-  aspect-ratio: 1;
-  max-width: 320px;
-  max-height: 320px;
-}
-
-#routeDetailMeta {
-  font-size: 12px;
-  color: var(--ink-dim);
-  font-variant-numeric: tabular-nums;
-  display: flex;
-  gap: 16px;
-  letter-spacing: 0.04em;
-}
-
-#routeDetailMeta b {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-#routeDetailRight {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 32px 24px 24px;
-  gap: 10px;
-}
-
-#routeDetailProfileStats {
-  font-size: 11px;
-  color: var(--ink-dim);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-}
-
-#routeDetailProfileStats b {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-#routeDetailProfileSvg {
-  width: 100%;
-  flex: 1;
-  min-height: 160px;
-  max-height: 280px;
-  display: block;
-}
-
-@media (max-width: 600px) {
-  #routeDetailBody {
-    grid-template-columns: 1fr;
-    overflow-y: auto;
-  }
-  #routeDetailLeft {
-    border-right: none;
-    border-bottom: 1px solid var(--hair);
-    padding: 24px 20px;
-  }
-  #routeDetailTrace {
-    max-width: 220px;
-    max-height: 220px;
-  }
-}
-
 /* MY ROUTES */
 #myRoutesBtn {
   background: transparent; border: none; cursor: pointer;
@@ -409,6 +283,16 @@
   transition: color 0.15s, border-color 0.15s;
 }
 #myRoutesBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+#editRouteBtn {
+  background: transparent; border: none; cursor: pointer;
+  font-family: var(--ui); font-size: 12px; letter-spacing: 0.10em;
+  text-transform: uppercase; color: var(--ink-dim);
+  padding: 4px 8px; border-radius: 4px;
+  border: 1px solid var(--hair);
+  transition: color 0.15s, border-color 0.15s;
+}
+#editRouteBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
 
 #myRoutesView {
   position: fixed; inset: 0; z-index: 50;
@@ -486,11 +370,28 @@
 .route-card {
   background: var(--panel);
   border: 1px solid var(--hair); border-radius: 8px;
-  padding: 16px; cursor: pointer;
+  cursor: pointer;
   transition: border-color 0.15s;
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 0;
+  overflow: hidden;
 }
 .route-card:hover { border-color: rgba(255,255,255,0.25); }
+
+.route-card-thumbnail {
+  width: 100%;
+  height: 180px;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  background: #0e1210;
+  flex-shrink: 0;
+}
+
+.route-card-body {
+  padding: 12px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .route-card-name {
   font-size: 14px; font-weight: 500; color: var(--ink);
   cursor: text; outline: none; border-bottom: 1px solid transparent;

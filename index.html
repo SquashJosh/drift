@@ -30,6 +30,7 @@
         </svg>
       </button>
     </div>
+    <button id="editRouteBtn" type="button" style="display:none">Edit route</button>
     <button id="myRoutesBtn" type="button">My Routes</button>
     <div id="readout"><b id="elev">&mdash;</b></div>
   </div>
@@ -96,30 +97,6 @@
   <div id="elevationProfile">
     <div id="profileStats"></div>
     <svg id="profileSvg" preserveAspectRatio="none"></svg>
-  </div>
-
-  <!-- ROUTE DETAIL VIEW -->
-  <div id="routeDetailView">
-    <div id="routeDetailHeader">
-      <button type="button" id="routeDetailBack">
-        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-          <path d="M11 4 L5 9 L11 14"/>
-        </svg>
-        My Routes
-      </button>
-      <div id="routeDetailName" contenteditable="true" spellcheck="false"></div>
-      <button type="button" id="routeDetailEdit">Edit on map</button>
-    </div>
-    <div id="routeDetailBody">
-      <div id="routeDetailLeft">
-        <svg id="routeDetailTrace" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"></svg>
-        <div id="routeDetailMeta"></div>
-      </div>
-      <div id="routeDetailRight">
-        <div id="routeDetailProfileStats"></div>
-        <svg id="routeDetailProfileSvg" preserveAspectRatio="none"></svg>
-      </div>
-    </div>
   </div>
 
   <!-- MY ROUTES VIEW -->

@@ -1595,6 +1595,7 @@ authSendBtn.addEventListener('click', async () => {
 // ---------------------------------------------------------------
 const saveRouteBtnEl = document.getElementById('saveRouteBtn');
 let activeRouteId = null; // id of the route currently loaded from My Routes, null if fresh
+let viewingRouteId = null; // non-null when a route is loaded in view mode
 
 function updateSaveButtonState() {
   if (!saveRouteBtnEl) return;
@@ -1648,11 +1649,17 @@ async function doSaveRoute() {
     return Math.round(g);
   })();
 
+  const geometry = legs.flatMap(leg => {
+    const f = leg.features[0];
+    return f ? f.geometry.coordinates : [];
+  });
+
   const routeObject = {
     name: generateRouteName(),
     waypoints,
     distance_km: dist,
     gain_m: gain,
+    geometry,
   };
 
   saveRouteBtnEl.disabled = true;
@@ -1667,6 +1674,7 @@ async function doSaveRoute() {
           waypoints: routeObject.waypoints,
           distance_km: routeObject.distance_km,
           gain_m: routeObject.gain_m,
+          geometry: routeObject.geometry,
         });
       } else {
         const saved = await saveRoute(routeObject);
@@ -1710,6 +1718,7 @@ const myRoutesGridEl = document.getElementById('myRoutesGrid');
 const myRoutesAuthMsgEl = document.getElementById('myRoutesAuthMsg');
 const myRoutesSendBtnEl = document.getElementById('myRoutesSendBtn');
 const myRoutesEmailEl = document.getElementById('myRoutesEmail');
+const editRouteBtnEl = document.getElementById('editRouteBtn');
 
 function formatDate(iso) {
   const d = new Date(iso);
@@ -1753,6 +1762,13 @@ async function loadMyRoutes() {
       const card = document.createElement('div');
       card.className = 'route-card';
 
+      const thumbnailDiv = document.createElement('div');
+      thumbnailDiv.className = 'route-card-thumbnail';
+      card.appendChild(thumbnailDiv);
+
+      const cardBody = document.createElement('div');
+      cardBody.className = 'route-card-body';
+
       const name = document.createElement('div');
       name.className = 'route-card-name';
       name.textContent = route.name;
@@ -1773,7 +1789,6 @@ async function loadMyRoutes() {
           }
         }
       });
-      // Stop card click from firing when editing name
       name.addEventListener('click', (e) => e.stopPropagation());
 
       const stats = document.createElement('div');
@@ -1794,7 +1809,7 @@ async function loadMyRoutes() {
       loadBtn.textContent = 'Open on map';
       loadBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openRouteDetail(route);
+        enterViewMode(route);
       });
 
       const deleteBtn = document.createElement('button');
@@ -1816,12 +1831,54 @@ async function loadMyRoutes() {
 
       actions.appendChild(loadBtn);
       actions.appendChild(deleteBtn);
-      card.addEventListener('click', () => openRouteDetail(route));
-      card.appendChild(name);
-      card.appendChild(stats);
-      card.appendChild(date);
-      card.appendChild(actions);
+      cardBody.appendChild(name);
+      cardBody.appendChild(stats);
+      cardBody.appendChild(date);
+      cardBody.appendChild(actions);
+      card.appendChild(cardBody);
       myRoutesGridEl.appendChild(card);
+
+      const thumbMap = new maplibregl.Map({
+        container: thumbnailDiv,
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        interactive: false,
+        attributionControl: false,
+      });
+
+      thumbMap.once('load', () => {
+        const coords = route.geometry
+          ? route.geometry
+          : (typeof route.waypoints === 'string'
+              ? JSON.parse(route.waypoints)
+              : route.waypoints);
+
+        if (!coords || coords.length < 2) return;
+
+        thumbMap.addSource('thumb-route', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: [{
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords }
+            }]
+          }
+        });
+        thumbMap.addLayer({
+          id: 'thumb-route-line',
+          type: 'line',
+          source: 'thumb-route',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#f0a500', 'line-width': 2.5, 'line-opacity': 0.95 }
+        });
+
+        const lngs = coords.map(c => c[0]);
+        const lats = coords.map(c => c[1]);
+        thumbMap.fitBounds([
+          [Math.min(...lngs) - 0.005, Math.min(...lats) - 0.005],
+          [Math.max(...lngs) + 0.005, Math.max(...lats) + 0.005]
+        ], { padding: 24, animate: false });
+      });
     });
 
   } catch (err) {
@@ -1865,6 +1922,52 @@ async function loadRouteOntoMap(route) {
   })();
 }
 
+function enterViewMode(route) {
+  const coords = route.geometry && route.geometry.length >= 2
+    ? route.geometry
+    : null;
+
+  if (!coords) {
+    viewingRouteId = null;
+    loadRouteOntoMap(route);
+    return;
+  }
+
+  clickMode = 'forecast';
+  viewingRouteId = route.id;
+  activeRouteId = route.id;
+  closeMyRoutes();
+
+  legs = [];
+  waypoints = typeof route.waypoints === 'string'
+    ? JSON.parse(route.waypoints)
+    : (route.waypoints || []);
+
+  initRouteMapLayers();
+  map.getSource('route-data').setData({
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: coords }
+    }]
+  });
+  drawWaypoints();
+  editRouteBtnEl.style.display = '';
+}
+
+function exitViewMode() {
+  viewingRouteId = null;
+  activeRouteId = null;
+  clearRoute();
+  editRouteBtnEl.style.display = 'none';
+}
+
+editRouteBtnEl.addEventListener('click', () => {
+  viewingRouteId = null;
+  editRouteBtnEl.style.display = 'none';
+  enterRouteMode();
+});
+
 myRoutesSendBtnEl.addEventListener('click', async () => {
   const email = myRoutesEmailEl.value.trim();
   if (!email) {
@@ -1895,102 +1998,4 @@ myRoutesSignOutEl.addEventListener('click', async () => {
   loadMyRoutes();
 });
 
-// ---------------------------------------------------------------
-// ROUTE DETAIL VIEW
-// ---------------------------------------------------------------
-const routeDetailViewEl = document.getElementById('routeDetailView');
-const routeDetailBackEl = document.getElementById('routeDetailBack');
-const routeDetailNameEl = document.getElementById('routeDetailName');
-const routeDetailEditEl = document.getElementById('routeDetailEdit');
-const routeDetailTraceEl = document.getElementById('routeDetailTrace');
-const routeDetailMetaEl = document.getElementById('routeDetailMeta');
-const routeDetailProfileSvgEl = document.getElementById('routeDetailProfileSvg');
-const routeDetailProfileStatsEl = document.getElementById('routeDetailProfileStats');
-
-let currentDetailRoute = null;
-
-function drawRouteTrace(waypointList) {
-  const svg = routeDetailTraceEl;
-  if (!waypointList || waypointList.length < 2) { svg.innerHTML = ''; return; }
-
-  const lngs = waypointList.map(w => w[0]);
-  const lats = waypointList.map(w => w[1]);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-
-  const pad = 0.1;
-  const lngSpan = maxLng - minLng || 1e-6;
-  const latSpan = maxLat - minLat || 1e-6;
-  const scale = (1 - 2 * pad) / Math.max(lngSpan, latSpan);
-
-  const toX = lng => pad + (lng - minLng) * scale + (1 - 2 * pad - lngSpan * scale) / 2;
-  const toY = lat => 1 - pad - (lat - minLat) * scale - (1 - 2 * pad - latSpan * scale) / 2;
-
-  const pts = waypointList.map(w => toX(w[0]).toFixed(4) + ',' + toY(w[1]).toFixed(4)).join(' ');
-
-  svg.setAttribute('viewBox', '0 0 1 1');
-  svg.innerHTML =
-    '<polyline points="' + pts + '" stroke="' + ROUTE_COLOUR + '" stroke-width="0.025" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<circle cx="' + toX(waypointList[0][0]).toFixed(4) + '" cy="' + toY(waypointList[0][1]).toFixed(4) + '" r="0.035" fill="rgba(255,255,255,0.6)"/>';
-}
-
-function openRouteDetail(route) {
-  currentDetailRoute = route;
-  routeDetailViewEl.classList.add('open');
-
-  routeDetailNameEl.textContent = route.name;
-
-  const waypts = typeof route.waypoints === 'string'
-    ? JSON.parse(route.waypoints)
-    : route.waypoints;
-
-  drawRouteTrace(waypts);
-
-  routeDetailMetaEl.innerHTML =
-    '<span><b>' + (route.distance_km || 0) + ' km</b></span>' +
-    '<span><b>↑ ' + (route.gain_m || 0) + ' m</b></span>' +
-    '<span>' + formatDate(route.created_at) + '</span>';
-
-  routeDetailProfileSvgEl.innerHTML = '';
-  routeDetailProfileStatsEl.innerHTML = '<span style="color:var(--ink-dim)">Loading profile…</span>';
-
-  if (!waypts || waypts.length < 2) return;
-
-  (async () => {
-    const detailLegs = await reconstructLegs(waypts);
-    renderElevationProfile(routeDetailProfileSvgEl, routeDetailProfileStatsEl, detailLegs, null);
-  })();
-}
-
-function closeRouteDetail() {
-  routeDetailViewEl.classList.remove('open');
-  currentDetailRoute = null;
-}
-
-routeDetailBackEl.addEventListener('click', closeRouteDetail);
-
-routeDetailNameEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); routeDetailNameEl.blur(); }
-});
-routeDetailNameEl.addEventListener('blur', async () => {
-  if (!currentDetailRoute) return;
-  const newName = routeDetailNameEl.textContent.trim();
-  if (newName && newName !== currentDetailRoute.name) {
-    try {
-      await renameRoute(currentDetailRoute.id, newName);
-      currentDetailRoute.name = newName;
-    } catch (err) {
-      console.error('Rename failed:', err);
-      routeDetailNameEl.textContent = currentDetailRoute.name;
-    }
-  }
-});
-
-routeDetailEditEl.addEventListener('click', () => {
-  if (!currentDetailRoute) return;
-  const routeToLoad = currentDetailRoute;
-  closeRouteDetail();
-  closeMyRoutes();
-  loadRouteOntoMap(routeToLoad);
-});
 
