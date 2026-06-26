@@ -1902,117 +1902,68 @@ const routeDetailViewEl = document.getElementById('routeDetailView');
 const routeDetailBackEl = document.getElementById('routeDetailBack');
 const routeDetailNameEl = document.getElementById('routeDetailName');
 const routeDetailEditEl = document.getElementById('routeDetailEdit');
-const routeDetailStatsEl = document.getElementById('routeDetailStats');
-const routeDetailMapLoadingEl = document.getElementById('routeDetailMapLoading');
+const routeDetailTraceEl = document.getElementById('routeDetailTrace');
+const routeDetailMetaEl = document.getElementById('routeDetailMeta');
 const routeDetailProfileSvgEl = document.getElementById('routeDetailProfileSvg');
 const routeDetailProfileStatsEl = document.getElementById('routeDetailProfileStats');
 
-let detailMap = null;
-let detailHoverMarker = null;
 let currentDetailRoute = null;
+
+function drawRouteTrace(waypointList) {
+  const svg = routeDetailTraceEl;
+  if (!waypointList || waypointList.length < 2) { svg.innerHTML = ''; return; }
+
+  const lngs = waypointList.map(w => w[0]);
+  const lats = waypointList.map(w => w[1]);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+
+  const pad = 0.1;
+  const lngSpan = maxLng - minLng || 1e-6;
+  const latSpan = maxLat - minLat || 1e-6;
+  const scale = (1 - 2 * pad) / Math.max(lngSpan, latSpan);
+
+  const toX = lng => pad + (lng - minLng) * scale + (1 - 2 * pad - lngSpan * scale) / 2;
+  const toY = lat => 1 - pad - (lat - minLat) * scale - (1 - 2 * pad - latSpan * scale) / 2;
+
+  const pts = waypointList.map(w => toX(w[0]).toFixed(4) + ',' + toY(w[1]).toFixed(4)).join(' ');
+
+  svg.setAttribute('viewBox', '0 0 1 1');
+  svg.innerHTML =
+    '<polyline points="' + pts + '" stroke="' + ROUTE_COLOUR + '" stroke-width="0.025" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="' + toX(waypointList[0][0]).toFixed(4) + '" cy="' + toY(waypointList[0][1]).toFixed(4) + '" r="0.035" fill="rgba(255,255,255,0.6)"/>';
+}
 
 function openRouteDetail(route) {
   currentDetailRoute = route;
   routeDetailViewEl.classList.add('open');
 
-  // Populate name and stats immediately
   routeDetailNameEl.textContent = route.name;
-  routeDetailStatsEl.innerHTML =
-    '<span><b>' + (route.distance_km || 0) + ' km</b></span>' +
-    '<span><b>↑ ' + (route.gain_m || 0) + ' m</b></span>' +
-    '<span>' + formatDate(route.created_at) + '</span>';
 
-  // Clear previous profile
-  routeDetailProfileSvgEl.innerHTML = '';
-  routeDetailProfileStatsEl.innerHTML = '';
-  routeDetailMapLoadingEl.style.display = 'flex';
-
-  // Init detail map
-  if (detailMap) { detailMap.remove(); detailMap = null; }
-  detailMap = new maplibregl.Map({
-    container: 'routeDetailMap',
-    style: 'https://tiles.openfreemap.org/styles/liberty',
-    center: [-75.6972, 45.4215],
-    zoom: 10,
-    attributionControl: false,
-    interactive: true,
-  });
-
-  // Reconstruct legs from waypoints
   const waypts = typeof route.waypoints === 'string'
     ? JSON.parse(route.waypoints)
     : route.waypoints;
 
-  if (!waypts || waypts.length < 2) {
-    routeDetailMapLoadingEl.style.display = 'none';
-    return;
-  }
+  drawRouteTrace(waypts);
 
-  detailMap.on('load', async () => {
-    let detailLegs = [];
+  routeDetailMetaEl.innerHTML =
+    '<span><b>' + (route.distance_km || 0) + ' km</b></span>' +
+    '<span><b>↑ ' + (route.gain_m || 0) + ' m</b></span>' +
+    '<span>' + formatDate(route.created_at) + '</span>';
 
-    // Add empty sources and layers
-    detailMap.addSource('detail-route', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] }
-    });
-    detailMap.addLayer({
-      id: 'detail-route-line',
-      type: 'line',
-      source: 'detail-route',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': ROUTE_COLOUR, 'line-width': 3, 'line-opacity': 0.9 }
-    });
+  routeDetailProfileSvgEl.innerHTML = '';
+  routeDetailProfileStatsEl.innerHTML = '<span style="color:var(--ink-dim)">Loading profile…</span>';
 
-    detailLegs = await reconstructLegs(waypts, {
-      onLeg: (leg) => {
-        const coords = detailLegs.flatMap(l => l.features[0] ? l.features[0].geometry.coordinates : []);
-        detailMap.getSource('detail-route').setData({
-          type: 'FeatureCollection',
-          features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } }]
-        });
-        const allLngs = coords.map(c => c[0]);
-        const allLats = coords.map(c => c[1]);
-        if (coords.length) {
-          detailMap.fitBounds([
-            [Math.min(...allLngs) - 0.01, Math.min(...allLats) - 0.01],
-            [Math.max(...allLngs) + 0.01, Math.max(...allLats) + 0.01]
-          ], { padding: 32, animate: false });
-        }
-      }
-    });
+  if (!waypts || waypts.length < 2) return;
 
-    routeDetailMapLoadingEl.style.display = 'none';
-
-    // Render elevation profile
-    renderElevationProfile(
-      routeDetailProfileSvgEl,
-      routeDetailProfileStatsEl,
-      detailLegs,
-      (coord) => {
-        if (!detailMap) return;
-        if (!coord) {
-          if (detailHoverMarker) { detailHoverMarker.remove(); detailHoverMarker = null; }
-          return;
-        }
-        const lngLat = [coord[0], coord[1]];
-        if (!detailHoverMarker) {
-          const el = document.createElement('div');
-          el.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #1a1a1a;pointer-events:none;';
-          detailHoverMarker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(detailMap);
-        } else {
-          detailHoverMarker.setLngLat(lngLat);
-        }
-      }
-    );
-  });
-
+  (async () => {
+    const detailLegs = await reconstructLegs(waypts);
+    renderElevationProfile(routeDetailProfileSvgEl, routeDetailProfileStatsEl, detailLegs, null);
+  })();
 }
 
 function closeRouteDetail() {
   routeDetailViewEl.classList.remove('open');
-  if (detailHoverMarker) { detailHoverMarker.remove(); detailHoverMarker = null; }
-  if (detailMap) { detailMap.remove(); detailMap = null; }
   currentDetailRoute = null;
 }
 

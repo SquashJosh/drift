@@ -316,51 +316,87 @@
 #routeDetailEdit:hover { opacity: 0.85; }
 
 #routeDetailBody {
-  flex: 1; overflow-y: auto;
-  display: flex; flex-direction: column;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  overflow: hidden;
+  min-height: 0;
 }
-#routeDetailStats {
-  padding: 16px 20px;
-  font-size: 13px; color: var(--ink-dim);
+
+#routeDetailLeft {
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 24px;
+  gap: 20px;
+}
+
+#routeDetailTrace {
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 320px;
+  max-height: 320px;
+}
+
+#routeDetailMeta {
+  font-size: 12px;
+  color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
-  display: flex; gap: 20px;
-  border-bottom: 1px solid var(--hair);
-  flex-shrink: 0;
-}
-#routeDetailStats b { color: var(--ink); font-weight: 600; }
-
-#routeDetailMapContainer {
-  position: relative;
-  height: 45vh; flex-shrink: 0;
-  border-bottom: 1px solid var(--hair);
-}
-#routeDetailMap {
-  width: 100%; height: 100%;
-}
-#routeDetailMapLoading {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(10,12,11,0.7);
-  font-family: var(--ui); font-size: 13px; color: var(--ink-dim);
-  pointer-events: none;
+  display: flex;
+  gap: 16px;
+  letter-spacing: 0.04em;
 }
 
-#routeDetailProfileContainer {
-  padding: 16px 20px 24px;
-  display: flex; flex-direction: column; gap: 6px;
-  flex-shrink: 0;
+#routeDetailMeta b {
+  color: var(--ink);
+  font-weight: 600;
 }
+
+#routeDetailRight {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 24px 24px;
+  gap: 10px;
+}
+
 #routeDetailProfileStats {
-  font-size: 11px; color: var(--ink-dim);
-  font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+  font-size: 11px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
-#routeDetailProfileStats b { color: var(--ink); font-weight: 600; }
+
+#routeDetailProfileStats b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 #routeDetailProfileSvg {
-  width: 100%; height: 120px; display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 160px;
+  max-height: 280px;
+  display: block;
 }
 
 @media (max-width: 600px) {
-  #routeDetailMapContainer { height: 35vh; }
+  #routeDetailBody {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  #routeDetailLeft {
+    border-right: none;
+    border-bottom: 1px solid var(--hair);
+    padding: 24px 20px;
+  }
+  #routeDetailTrace {
+    max-width: 220px;
+    max-height: 220px;
+  }
 }
 
 /* MY ROUTES */
