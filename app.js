@@ -1954,17 +1954,19 @@ function enterViewMode(route) {
     ? JSON.parse(route.waypoints)
     : (route.waypoints || []);
 
+  const cleanCoords = coords.map(c => [c[0], c[1]]);
+
   initRouteMapLayers();
   map.getSource('route-data').setData({
     type: 'FeatureCollection',
     features: [{
       type: 'Feature',
-      geometry: { type: 'LineString', coordinates: coords }
+      geometry: { type: 'LineString', coordinates: cleanCoords }
     }]
   });
 
-  const lngs = coords.map(c => c[0]);
-  const lats = coords.map(c => c[1]);
+  const lngs = cleanCoords.map(c => c[0]);
+  const lats = cleanCoords.map(c => c[1]);
   const bounds = [
     [Math.min(...lngs) - 0.005, Math.min(...lats) - 0.005],
     [Math.max(...lngs) + 0.005, Math.max(...lats) + 0.005]
