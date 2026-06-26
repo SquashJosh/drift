@@ -18,34 +18,32 @@ getCurrentUser().then(user => {
     try {
       const restored = JSON.parse(pending);
       if (restored.length > 0 && user) {
-        // Enter route mode and rebuild the route
         enterRouteMode();
-        (async () => {
+        const doRestore = async () => {
           reconstructing = true;
           try {
-            for (let i = 0; i < restored.length; i++) {
-              waypoints.push(restored[i]);
-              initRouteMapLayers();
-              drawWaypoints();
-              if (i > 0) {
-                try {
-                  const leg = await fetchLeg(restored[i-1], restored[i]);
-                  legs.push(leg);
-                  drawRoute();
-                  drawElevationProfile();
-                  document.getElementById('exportGpxBtn').disabled = false;
-                  updateSaveButtonState();
-                } catch (err) {
-                  console.error('Route restore leg failed:', err);
-                }
+            waypoints.push(...restored);
+            initRouteMapLayers();
+            drawWaypoints();
+            await reconstructLegs(restored, {
+              onLeg: (leg) => {
+                legs.push(leg);
+                drawRoute();
+                drawElevationProfile();
+                document.getElementById('exportGpxBtn').disabled = false;
+                updateSaveButtonState();
               }
-            }
+            });
           } finally {
             reconstructing = false;
           }
-          // Prompt to save now that we're signed in
           await doSaveRoute();
-        })();
+        };
+        if (map.isStyleLoaded()) {
+          doRestore();
+        } else {
+          map.once('idle', doRestore);
+        }
       }
     } catch(e) {
       console.error('Route restore failed:', e);
@@ -1430,6 +1428,25 @@ getCurrentUser().then(user => {
       a.click();
     }
 
+    /**
+     * Fetch BRouter legs for an ordered array of waypoints.
+     * Calls onLeg(leg, index) after each successful fetch.
+     * Returns the array of all legs fetched.
+     */
+    async function reconstructLegs(waypointList, { onLeg } = {}) {
+      const result = [];
+      for (let i = 1; i < waypointList.length; i++) {
+        try {
+          const leg = await fetchLeg(waypointList[i - 1], waypointList[i]);
+          result.push(leg);
+          if (onLeg) onLeg(leg, i - 1);
+        } catch (err) {
+          console.error('Leg reconstruction failed:', err, 'from:', waypointList[i-1], 'to:', waypointList[i]);
+        }
+      }
+      return result;
+    }
+
     function clearRoute() {
       waypoints = [];
       legs = [];
@@ -1828,26 +1845,20 @@ async function loadRouteOntoMap(route) {
   if (!restored || restored.length < 2) return;
 
   (async () => {
+    for (const wp of restored) waypoints.push(wp);
+    initRouteMapLayers();
+    drawWaypoints();
     reconstructing = true;
     try {
-      console.log('Reconstructing route, waypoints:', restored);
-      for (let i = 0; i < restored.length; i++) {
-        waypoints.push(restored[i]);
-        initRouteMapLayers();
-        drawWaypoints();
-        if (i > 0) {
-          try {
-            const leg = await fetchLeg(restored[i - 1], restored[i]);
-            legs.push(leg);
-            drawRoute();
-            drawElevationProfile();
-            document.getElementById('exportGpxBtn').disabled = false;
-            updateSaveButtonState();
-          } catch (err) {
-            console.error('Leg reconstruction failed:', err, 'from:', restored[i-1], 'to:', restored[i]);
-          }
+      await reconstructLegs(restored, {
+        onLeg: (leg) => {
+          legs.push(leg);
+          drawRoute();
+          drawElevationProfile();
+          document.getElementById('exportGpxBtn').disabled = false;
+          updateSaveButtonState();
         }
-      }
+      });
     } finally {
       reconstructing = false;
     }
@@ -1938,7 +1949,7 @@ function openRouteDetail(route) {
   }
 
   detailMap.on('load', async () => {
-    const detailLegs = [];
+    let detailLegs = [];
 
     // Add empty sources and layers
     detailMap.addSource('detail-route', {
@@ -1953,31 +1964,23 @@ function openRouteDetail(route) {
       paint: { 'line-color': ROUTE_COLOUR, 'line-width': 3, 'line-opacity': 0.9 }
     });
 
-    // Fetch legs one by one
-    for (let i = 1; i < waypts.length; i++) {
-      try {
-        const leg = await fetchLeg(waypts[i - 1], waypts[i]);
-        detailLegs.push(leg);
-
-        // Update route line progressively
+    detailLegs = await reconstructLegs(waypts, {
+      onLeg: (leg) => {
         const coords = detailLegs.flatMap(l => l.features[0] ? l.features[0].geometry.coordinates : []);
         detailMap.getSource('detail-route').setData({
           type: 'FeatureCollection',
           features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } }]
         });
-
-        // Fit bounds to full route
         const allLngs = coords.map(c => c[0]);
         const allLats = coords.map(c => c[1]);
-        detailMap.fitBounds([
-          [Math.min(...allLngs) - 0.01, Math.min(...allLats) - 0.01],
-          [Math.max(...allLngs) + 0.01, Math.max(...allLats) + 0.01]
-        ], { padding: 32, animate: false });
-
-      } catch (err) {
-        console.error('Detail leg failed:', err);
+        if (coords.length) {
+          detailMap.fitBounds([
+            [Math.min(...allLngs) - 0.01, Math.min(...allLats) - 0.01],
+            [Math.max(...allLngs) + 0.01, Math.max(...allLats) + 0.01]
+          ], { padding: 32, animate: false });
+        }
       }
-    }
+    });
 
     routeDetailMapLoadingEl.style.display = 'none';
 
