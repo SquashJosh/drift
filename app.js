@@ -1838,46 +1838,48 @@ async function loadMyRoutes() {
       card.appendChild(cardBody);
       myRoutesGridEl.appendChild(card);
 
-      const thumbMap = new maplibregl.Map({
-        container: thumbnailDiv,
-        style: 'https://tiles.openfreemap.org/styles/liberty',
-        interactive: false,
-        attributionControl: false,
-      });
-
-      thumbMap.once('load', () => {
-        const coords = route.geometry
-          ? route.geometry
-          : (typeof route.waypoints === 'string'
-              ? JSON.parse(route.waypoints)
-              : route.waypoints);
-
-        if (!coords || coords.length < 2) return;
-
-        thumbMap.addSource('thumb-route', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates: coords }
-            }]
-          }
-        });
-        thumbMap.addLayer({
-          id: 'thumb-route-line',
-          type: 'line',
-          source: 'thumb-route',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#f0a500', 'line-width': 2.5, 'line-opacity': 0.95 }
+      requestAnimationFrame(() => {
+        const thumbMap = new maplibregl.Map({
+          container: thumbnailDiv,
+          style: 'https://tiles.openfreemap.org/styles/liberty',
+          interactive: false,
+          attributionControl: false,
         });
 
-        const lngs = coords.map(c => c[0]);
-        const lats = coords.map(c => c[1]);
-        thumbMap.fitBounds([
-          [Math.min(...lngs) - 0.005, Math.min(...lats) - 0.005],
-          [Math.max(...lngs) + 0.005, Math.max(...lats) + 0.005]
-        ], { padding: 24, animate: false });
+        thumbMap.once('load', () => {
+          const coords = route.geometry
+            ? route.geometry
+            : (typeof route.waypoints === 'string'
+                ? JSON.parse(route.waypoints)
+                : route.waypoints);
+
+          if (!coords || coords.length < 2) return;
+
+          thumbMap.addSource('thumb-route', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: coords }
+              }]
+            }
+          });
+          thumbMap.addLayer({
+            id: 'thumb-route-line',
+            type: 'line',
+            source: 'thumb-route',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#f0a500', 'line-width': 2.5, 'line-opacity': 0.95 }
+          });
+
+          const lngs = coords.map(c => c[0]);
+          const lats = coords.map(c => c[1]);
+          thumbMap.fitBounds([
+            [Math.min(...lngs) - 0.005, Math.min(...lats) - 0.005],
+            [Math.max(...lngs) + 0.005, Math.max(...lats) + 0.005]
+          ], { padding: 24, animate: false });
+        });
       });
     });
 
@@ -1951,6 +1953,14 @@ function enterViewMode(route) {
       geometry: { type: 'LineString', coordinates: coords }
     }]
   });
+
+  const lngs = coords.map(c => c[0]);
+  const lats = coords.map(c => c[1]);
+  map.fitBounds([
+    [Math.min(...lngs) - 0.005, Math.min(...lats) - 0.005],
+    [Math.max(...lngs) + 0.005, Math.max(...lats) + 0.005]
+  ], { padding: 60, duration: 800 });
+
   drawWaypoints();
   editRouteBtnEl.style.display = '';
 }
